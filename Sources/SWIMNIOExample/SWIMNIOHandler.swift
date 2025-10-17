@@ -18,8 +18,6 @@ import NIO
 import NIOFoundationCompat
 import SWIM
 
-import struct Dispatch.DispatchTime
-
 /// `ChannelDuplexHandler` responsible for encoding/decoding SWIM messages to/from the `SWIMNIOShell`.
 ///
 /// It is designed to work with `DatagramBootstrap`s, and the contained shell can send messages by writing `SWIMNIOSWIMNIOWriteCommand`
@@ -302,7 +300,7 @@ struct PendingResponseCallbackIdentifier: Hashable, CustomStringConvertible {
   let peerAddress: SocketAddress  // FIXME: UID as well...?
   let sequenceNumber: SWIM.SequenceNumber
 
-  let storedAt: DispatchTime = .now()
+  let storedAt: ContinuousClock.Instant = .now
 
   #if DEBUG
     let inResponseTo: SWIM.Message?
@@ -329,8 +327,10 @@ struct PendingResponseCallbackIdentifier: Hashable, CustomStringConvertible {
     """
   }
 
-  func nanosecondsSinceCallbackStored(now: DispatchTime = .now()) -> Duration {
-    Duration.nanoseconds(Int(now.uptimeNanoseconds - storedAt.uptimeNanoseconds))
+  func nanosecondsSinceCallbackStored(now: ContinuousClock.Instant = ContinuousClock().now)
+    -> Duration
+  {
+    self.storedAt.duration(to: now)
   }
 }
 
