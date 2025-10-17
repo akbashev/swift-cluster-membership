@@ -1,4 +1,4 @@
-// swift-tools-version:5.7
+// swift-tools-version:6.0
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -33,6 +33,9 @@ var targets: [PackageDescription.Target] = [
       "ClusterMembership",
       .product(name: "Logging", package: "swift-log"),
       .product(name: "Metrics", package: "swift-metrics"),
+    ],
+    swiftSettings: [
+      .swiftLanguageMode(.v5)
     ]
   ),
 
@@ -47,6 +50,9 @@ var targets: [PackageDescription.Target] = [
 
       .product(name: "Logging", package: "swift-log"),
       .product(name: "Metrics", package: "swift-metrics"),
+    ],
+    swiftSettings: [
+      .swiftLanguageMode(.v5)
     ]
   ),
 
@@ -147,10 +153,10 @@ let products: [PackageDescription.Product] = [
 var package = Package(
   name: "swift-cluster-membership",
   platforms: [
-    .macOS(.v13),
-    .iOS(.v16),
-    .tvOS(.v16),
-    .watchOS(.v9),
+    .macOS(.v15),
+    .iOS(.v18),
+    .tvOS(.v18),
+    .watchOS(.v11),
   ],
   products: products,
 
