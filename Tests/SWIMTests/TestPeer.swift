@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import ClusterMembership
-import Dispatch
+import Synchronization
 import XCTest
 
 @testable import SWIM
@@ -21,10 +21,9 @@ import XCTest
 final class TestPeer: Hashable, SWIMPeer, SWIMPingOriginPeer, SWIMPingRequestOriginPeer,
   CustomStringConvertible
 {
-  var swimNode: Node
-
-  let semaphore = DispatchSemaphore(value: 1)
-  var messages: [TestPeer.Message] = []
+  let _swimNode: Mutex<Node>
+  var swimNode: Node { self._swimNode.withLock { $0 } }
+  let _messages: Mutex<[TestPeer.Message]> = Mutex([])
 
   enum Message {
     case ping(
@@ -55,7 +54,7 @@ final class TestPeer: Hashable, SWIMPeer, SWIMPingOriginPeer, SWIMPingRequestOri
   }
 
   init(node: Node) {
-    self.swimNode = node
+    self._swimNode = Mutex(node)
   }
 
   func ping(
@@ -64,14 +63,13 @@ final class TestPeer: Hashable, SWIMPeer, SWIMPingOriginPeer, SWIMPingRequestOri
     timeout: Duration,
     sequenceNumber: SWIM.SequenceNumber
   ) async throws -> SWIM.PingResponse<TestPeer, TestPeer> {
-    self.semaphore.wait()
-    defer { self.semaphore.signal() }
-
-    return try await withCheckedThrowingContinuation { continuation in
-      self.messages.append(
-        .ping(
-          payload: payload, origin: pingOrigin, timeout: timeout, sequenceNumber: sequenceNumber,
-          continuation: continuation))
+    try await withCheckedThrowingContinuation { continuation in
+      self._messages.withLock {
+        $0.append(
+          .ping(
+            payload: payload, origin: pingOrigin, timeout: timeout, sequenceNumber: sequenceNumber,
+            continuation: continuation))
+      }
     }
   }
 
@@ -82,14 +80,13 @@ final class TestPeer: Hashable, SWIMPeer, SWIMPingOriginPeer, SWIMPingRequestOri
     timeout: Duration,
     sequenceNumber: SWIM.SequenceNumber
   ) async throws -> SWIM.PingResponse<TestPeer, TestPeer> {
-    self.semaphore.wait()
-    defer { self.semaphore.signal() }
-
-    return try await withCheckedThrowingContinuation { continuation in
-      self.messages.append(
-        .pingReq(
-          target: target, payload: payload, origin: origin, timeout: timeout,
-          sequenceNumber: sequenceNumber, continuation: continuation))
+    try await withCheckedThrowingContinuation { continuation in
+      self._messages.withLock {
+        $0.append(
+          .pingReq(
+            target: target, payload: payload, origin: origin, timeout: timeout,
+            sequenceNumber: sequenceNumber, continuation: continuation))
+      }
     }
   }
 
@@ -99,22 +96,21 @@ final class TestPeer: Hashable, SWIMPeer, SWIMPingOriginPeer, SWIMPingRequestOri
     incarnation: SWIM.Incarnation,
     payload: SWIM.GossipPayload<TestPeer>
   ) {
-    self.semaphore.wait()
-    defer { self.semaphore.signal() }
-
-    self.messages.append(
-      .ack(
-        target: target, incarnation: incarnation, payload: payload, sequenceNumber: sequenceNumber))
+    self._messages.withLock {
+      $0.append(
+        .ack(
+          target: target, incarnation: incarnation, payload: payload, sequenceNumber: sequenceNumber
+        ))
+    }
   }
 
   func nack(
     acknowledging sequenceNumber: SWIM.SequenceNumber,
     target: TestPeer
   ) {
-    self.semaphore.wait()
-    defer { self.semaphore.signal() }
-
-    self.messages.append(.nack(target: target, sequenceNumber: sequenceNumber))
+    self._messages.withLock {
+      $0.append(.nack(target: target, sequenceNumber: sequenceNumber))
+    }
   }
 
   func hash(into hasher: inout Hasher) {

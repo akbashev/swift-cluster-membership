@@ -1081,7 +1081,7 @@ final class SWIMInstanceTests: XCTestCase {
     XCTAssertTrue(swim.isMember(self.second))
 
     let restartedSecond = TestPeer(node: self.secondNode)
-    restartedSecond.swimNode.uid = self.second.node.uid! * 2
+    restartedSecond._swimNode.withLock { $0.uid = self.second.node.uid! * 2 }
 
     let directives = swim.addMember(restartedSecond, status: .alive(incarnation: 0))
 
