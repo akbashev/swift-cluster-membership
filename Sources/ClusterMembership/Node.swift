@@ -19,10 +19,10 @@
 public struct Node: Hashable, Sendable, Comparable, CustomStringConvertible {
   /// Protocol that can be used to contact this node;
   /// Does not have to be a formal protocol name and may be "swim" or a name which is understood by a membership implementation.
-  public var `protocol`: String
-  public var name: String?
-  public var host: String
-  public var port: Int
+  public let `protocol`: String
+  public let name: String?
+  public let host: String
+  public let port: Int
 
   public internal(set) var uid: UInt64?
 

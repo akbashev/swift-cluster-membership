@@ -1006,8 +1006,13 @@ final class SWIMInstanceTests: XCTestCase {
     let memberCount = 10
     var members: Set<TestPeer> = []
     for i in 1...memberCount {
-      var node = self.myselfNode
-      node.port = 8000 + i
+      let node = Node(
+        protocol: self.myselfNode.protocol,
+        name: self.myselfNode.name,
+        host: self.myselfNode.host,
+        port: 8000 + i,
+        uid: self.myselfNode.uid
+      )
       let peer = TestPeer(node: node)
       members.insert(peer)
       _ = swim.addMember(peer, status: .alive(incarnation: 0))
