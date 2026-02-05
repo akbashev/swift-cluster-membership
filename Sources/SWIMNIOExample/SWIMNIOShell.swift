@@ -24,7 +24,7 @@ import Synchronization
 /// all operations performed on the shell are properly synchronized by hopping to the right event loop.
 ///
 /// - SeeAlso: `SWIM.Instance` for detailed documentation about the SWIM protocol implementation.
-public final class SWIMNIOShell {
+public final class SWIMNIOShell: Sendable {
   let _swim: Mutex<SWIM.Instance<SWIM.NIOPeer, SWIM.NIOPeer, SWIM.NIOPeer>>
   var swim: SWIM.Instance<SWIM.NIOPeer, SWIM.NIOPeer, SWIM.NIOPeer> { self._swim.withLock { $0 } }
 
@@ -41,20 +41,20 @@ public final class SWIMNIOShell {
     self.myself
   }
 
-  let onMemberStatusChange: (SWIM.MemberStatusChangedEvent<SWIM.NIOPeer>) -> Void
+  let onMemberStatusChange: @Sendable (SWIM.MemberStatusChangedEvent<SWIM.NIOPeer>) -> Void
 
   public var node: Node {
     self.myself.node
   }
 
   /// Cancellable of the periodicPingTimer (if it was kicked off)
-  private var nextPeriodicTickCancellable: SWIMCancellable?
+  private let nextPeriodicTickCancellable: Mutex<SWIMCancellable?> = Mutex(.none)
 
   internal init(
     node: Node,
     settings: SWIMNIO.Settings,
     channel: Channel,
-    onMemberStatusChange: @escaping (SWIM.MemberStatusChangedEvent<SWIM.NIOPeer>) -> Void
+    onMemberStatusChange: @escaping @Sendable (SWIM.MemberStatusChangedEvent<SWIM.NIOPeer>) -> Void
   ) {
     self.settings = settings
 
@@ -75,7 +75,7 @@ public final class SWIMNIOShell {
     self.announceMembershipChange(.init(previousStatus: nil, member: self.swim.member))
 
     // Immediately attempt to connect to initial contact points
-    self.settings.swim.initialContactPoints.forEach { node in
+    for node in self.settings.swim.initialContactPoints {
       self.receiveStartMonitoring(node: node)
     }
 
@@ -96,7 +96,7 @@ public final class SWIMNIOShell {
       }
     }
 
-    self.nextPeriodicTickCancellable?.cancel()
+    self.nextPeriodicTickCancellable.withLock { $0?.cancel() }
     switch self._swim.withLock({ $0.confirmDead(peer: self.peer) }) {
     case .applied(let change):
       self.tryAnnounceMemberReachability(change: change)
@@ -108,7 +108,7 @@ public final class SWIMNIOShell {
 
   /// Start a *single* timer, to run the passed task after given delay.
   @discardableResult
-  private func schedule(delay: Duration, _ task: @escaping () -> Void) -> SWIMCancellable {
+  private func schedule(delay: Duration, _ task: @Sendable @escaping () -> Void) -> SWIMCancellable {
     self.eventLoop.assertInEventLoop()
 
     let scheduled: Scheduled<Void> = self.eventLoop.scheduleTask(in: delay.toNIO) { () in task() }
@@ -133,12 +133,18 @@ public final class SWIMNIOShell {
 
     case .pingRequest(let target, let pingRequestOrigin, let payload, let sequenceNumber):
       self.receivePingRequest(
-        target: target, pingRequestOrigin: pingRequestOrigin, payload: payload,
-        sequenceNumber: sequenceNumber)
+        target: target,
+        pingRequestOrigin: pingRequestOrigin,
+        payload: payload,
+        sequenceNumber: sequenceNumber
+      )
 
     case .response(let pingResponse):
       self.receivePingResponse(
-        response: pingResponse, pingRequestOriginPeer: nil, pingRequestSequenceNumber: nil)
+        response: pingResponse,
+        pingRequestOriginPeer: nil,
+        pingRequestSequenceNumber: nil
+      )
     }
   }
 
@@ -162,7 +168,8 @@ public final class SWIMNIOShell {
   }
 
   private func receivePing(
-    pingOrigin: SWIM.NIOPeer, payload: SWIM.GossipPayload<SWIM.NIOPeer>,
+    pingOrigin: SWIM.NIOPeer,
+    payload: SWIM.GossipPayload<SWIM.NIOPeer>,
     sequenceNumber: SWIM.SequenceNumber
   ) {
     guard self.eventLoop.inEventLoop else {
@@ -177,24 +184,36 @@ public final class SWIMNIOShell {
         "swim/ping/pingOrigin": "\(pingOrigin.swimNode)",
         "swim/ping/payload": "\(payload)",
         "swim/ping/seqNr": "\(sequenceNumber)",
-      ]))
+      ])
+    )
 
     let directives: [SWIM.Instance.PingDirective] = self._swim.withLock {
       $0.onPing(
-        pingOrigin: pingOrigin.peer(self.channel), payload: payload, sequenceNumber: sequenceNumber)
+        pingOrigin: pingOrigin.peer(self.channel),
+        payload: payload,
+        sequenceNumber: sequenceNumber
+      )
     }
-    directives.forEach { directive in
+    for directive in directives {
       switch directive {
       case .gossipProcessed(let gossipDirective):
         self.handleGossipPayloadProcessedDirective(gossipDirective)
 
       case .sendAck(
-        let pingOrigin, let pingedTarget, let incarnation, let payload, let sequenceNumber):
+        let pingOrigin,
+        let pingedTarget,
+        let incarnation,
+        let payload,
+        let sequenceNumber
+      ):
         self.tracelog(.reply(to: pingOrigin), message: "\(directive)")
         Task {
           await pingOrigin.peer(self.channel).ack(
-            acknowledging: sequenceNumber, target: pingedTarget, incarnation: incarnation,
-            payload: payload)
+            acknowledging: sequenceNumber,
+            target: pingedTarget,
+            incarnation: incarnation,
+            payload: payload
+          )
         }
       }
     }
@@ -209,8 +228,11 @@ public final class SWIMNIOShell {
     guard self.eventLoop.inEventLoop else {
       return self.eventLoop.execute {
         self.receivePingRequest(
-          target: target, pingRequestOrigin: pingRequestOrigin, payload: payload,
-          sequenceNumber: sequenceNumber)
+          target: target,
+          pingRequestOrigin: pingRequestOrigin,
+          payload: payload,
+          sequenceNumber: sequenceNumber
+        )
       }
     }
 
@@ -221,7 +243,8 @@ public final class SWIMNIOShell {
         "swim/pingRequest/sequenceNumber": "\(sequenceNumber)",
         "swim/target": "\(target.node)",
         "swim/gossip/payload": "\(payload)",
-      ])
+      ]
+    )
 
     let directives = self._swim.withLock {
       $0.onPingRequest(
@@ -231,14 +254,19 @@ public final class SWIMNIOShell {
         sequenceNumber: sequenceNumber
       )
     }
-    directives.forEach { directive in
+    for directive in directives {
       switch directive {
       case .gossipProcessed(let gossipDirective):
         self.handleGossipPayloadProcessedDirective(gossipDirective)
 
       case .sendPing(
-        let target, let payload, let pingRequestOriginPeer, let pingRequestSequenceNumber,
-        let timeout, let sequenceNumber):
+        let target,
+        let payload,
+        let pingRequestOriginPeer,
+        let pingRequestSequenceNumber,
+        let timeout,
+        let sequenceNumber
+      ):
         Task {
           await self.sendPing(
             to: target,
@@ -262,8 +290,10 @@ public final class SWIMNIOShell {
     guard self.eventLoop.inEventLoop else {
       return self.eventLoop.execute {
         self.receivePingResponse(
-          response: response, pingRequestOriginPeer: pingRequestOriginPeer,
-          pingRequestSequenceNumber: pingRequestSequenceNumber)
+          response: response,
+          pingRequestOriginPeer: pingRequestOriginPeer,
+          pingRequestSequenceNumber: pingRequestSequenceNumber
+        )
       }
     }
 
@@ -274,25 +304,35 @@ public final class SWIMNIOShell {
         "swim/pingRequest/sequenceNumber": "\(pingRequestSequenceNumber, orElse: "nil")",
         "swim/response": "\(response)",
         "swim/response/sequenceNumber": "\(response.sequenceNumber)",
-      ]))
+      ])
+    )
 
     let directives = self._swim.withLock {
       $0.onPingResponse(
-        response: response, pingRequestOrigin: pingRequestOriginPeer,
+        response: response,
+        pingRequestOrigin: pingRequestOriginPeer,
         pingRequestSequenceNumber: pingRequestSequenceNumber
       )
     }
     // optionally debug log all directives here
-    directives.forEach { directive in
+    for directive in directives {
       switch directive {
       case .gossipProcessed(let gossipDirective):
         self.handleGossipPayloadProcessedDirective(gossipDirective)
 
       case .sendAck(
-        let pingRequestOrigin, let acknowledging, let target, let incarnation, let payload):
+        let pingRequestOrigin,
+        let acknowledging,
+        let target,
+        let incarnation,
+        let payload
+      ):
         Task {
           await pingRequestOrigin.ack(
-            acknowledging: acknowledging, target: target, incarnation: incarnation, payload: payload
+            acknowledging: acknowledging,
+            target: target,
+            incarnation: incarnation,
+            payload: payload
           )
         }
 
@@ -310,7 +350,8 @@ public final class SWIMNIOShell {
   }
 
   func receiveEveryPingRequestResponse(
-    result: SWIM.PingResponse<SWIM.NIOPeer, SWIM.NIOPeer>, pingedPeer: SWIM.NIOPeer
+    result: SWIM.PingResponse<SWIM.NIOPeer, SWIM.NIOPeer>,
+    pingedPeer: SWIM.NIOPeer
   ) {
     guard self.eventLoop.inEventLoop else {
       return self.eventLoop.execute {
@@ -328,12 +369,14 @@ public final class SWIMNIOShell {
         This directive used to be implemented as always returning no directives. \
         Check your shell implementations if you updated the SWIM library as it seems this has changed. \
         Directive was: \(directives), swim was: \(self.swim.metadata)
-        """)
+        """
+      )
     }
   }
 
   func receivePingRequestResponse(
-    result: SWIM.PingResponse<SWIM.NIOPeer, SWIM.NIOPeer>, pingedPeer: SWIM.NIOPeer
+    result: SWIM.PingResponse<SWIM.NIOPeer, SWIM.NIOPeer>,
+    pingedPeer: SWIM.NIOPeer
   ) {
     guard self.eventLoop.inEventLoop else {
       return self.eventLoop.execute {
@@ -347,10 +390,12 @@ public final class SWIMNIOShell {
     // FIXME: change those directives
     let directives: [SWIM.Instance.PingRequestResponseDirective] = self._swim.withLock {
       $0.onPingRequestResponse(
-        result, pinged: pingedPeer)
+        result,
+        pinged: pingedPeer
+      )
     }
-    directives.forEach {
-      switch $0 {
+    for directive in directives {
+      switch directive {
       case .gossipProcessed(let gossipDirective):
         self.handleGossipPayloadProcessedDirective(gossipDirective)
 
@@ -402,15 +447,21 @@ public final class SWIMNIOShell {
         "swim/target": "\(target)",
         "swim/gossip/payload": "\(payload)",
         "swim/timeout": "\(timeout)",
-      ]))
+      ])
+    )
 
     self.tracelog(
       .send(to: target),
-      message: "ping(replyTo: \(self.peer), payload: \(payload), sequenceNr: \(sequenceNumber))")
+      message: "ping(replyTo: \(self.peer), payload: \(payload), sequenceNr: \(sequenceNumber))"
+    )
 
     do {
       let response = try await target.ping(
-        payload: payload, from: self.peer, timeout: timeout, sequenceNumber: sequenceNumber)
+        payload: payload,
+        from: self.peer,
+        timeout: timeout,
+        sequenceNumber: sequenceNumber
+      )
       self.receivePingResponse(
         response: response,
         pingRequestOriginPeer: pingRequestOrigin,
@@ -419,8 +470,11 @@ public final class SWIMNIOShell {
     } catch let error as SWIMNIOTimeoutError {
       self.receivePingResponse(
         response: .timeout(
-          target: target, pingRequestOrigin: pingRequestOrigin, timeout: error.timeout,
-          sequenceNumber: sequenceNumber),
+          target: target,
+          pingRequestOrigin: pingRequestOrigin,
+          timeout: error.timeout,
+          sequenceNumber: sequenceNumber
+        ),
         pingRequestOriginPeer: pingRequestOrigin,
         pingRequestSequenceNumber: pingRequestSequenceNumber
       )
@@ -428,8 +482,11 @@ public final class SWIMNIOShell {
       self.log.debug("Failed to ping", metadata: ["ping/target": "\(target)", "error": "\(error)"])
       self.receivePingResponse(
         response: .timeout(
-          target: target, pingRequestOrigin: pingRequestOrigin, timeout: timeout,
-          sequenceNumber: sequenceNumber),
+          target: target,
+          pingRequestOrigin: pingRequestOrigin,
+          timeout: timeout,
+          sequenceNumber: sequenceNumber
+        ),
         pingRequestOriginPeer: pingRequestOrigin,
         pingRequestSequenceNumber: pingRequestSequenceNumber
       )
@@ -443,7 +500,8 @@ public final class SWIMNIOShell {
     // still alive. Therefore we propagate only the first success, but no failures.
     // The failure case is handled through the timeout of the whole operation.
     let firstSuccessPromise = self.eventLoop.makePromise(
-      of: SWIM.PingResponse<SWIM.NIOPeer, SWIM.NIOPeer>.self)
+      of: SWIM.PingResponse<SWIM.NIOPeer, SWIM.NIOPeer>.self
+    )
     let pingTimeout = directive.timeout
     let target = directive.target
     let startedSendingPingRequestsSentAt: ContinuousClock.Instant = .now
@@ -470,13 +528,15 @@ public final class SWIMNIOShell {
               target: target,
               payload: payload,
               from: self.peer,
-              timeout: pingTimeout, sequenceNumber: sequenceNumber
+              timeout: pingTimeout,
+              sequenceNumber: sequenceNumber
             )
 
             // we only record successes
 
             self.swim.metrics.shell.pingRequestResponseTimeAll.record(
-              duration: pingRequestSentAt.duration(to: .now))
+              duration: pingRequestSentAt.duration(to: .now)
+            )
             self.receiveEveryPingRequestResponse(result: response, pingedPeer: target)
 
             if case .ack = response {
@@ -490,8 +550,13 @@ public final class SWIMNIOShell {
           } catch {
             self.receiveEveryPingRequestResponse(
               result: .timeout(
-                target: target, pingRequestOrigin: self.myself, timeout: pingTimeout,
-                sequenceNumber: sequenceNumber), pingedPeer: target)
+                target: target,
+                pingRequestOrigin: self.myself,
+                timeout: pingTimeout,
+                sequenceNumber: sequenceNumber
+              ),
+              pingedPeer: target
+            )
             // these are generally harmless thus we do not want to log them on higher levels
             self.log.trace(
               "Failed pingRequest",
@@ -500,7 +565,8 @@ public final class SWIMNIOShell {
                 "swim/payload": "\(payload)",
                 "swim/pingTimeout": "\(pingTimeout)",
                 "error": "\(error)",
-              ])
+              ]
+            )
           }
         }
       }
@@ -511,17 +577,24 @@ public final class SWIMNIOShell {
       switch result {
       case .success(let response):
         self.swim.metrics.shell.pingRequestResponseTimeFirst.record(
-          duration: startedSendingPingRequestsSentAt.duration(to: .now))
+          duration: startedSendingPingRequestsSentAt.duration(to: .now)
+        )
         self.receivePingRequestResponse(result: response, pingedPeer: target)
 
       case .failure(let error):
         self.log.debug(
           "Failed to pingRequest via \(directive.requestDetails.count) peers",
-          metadata: ["pingRequest/target": "\(target)", "error": "\(error)"])
+          metadata: ["pingRequest/target": "\(target)", "error": "\(error)"]
+        )
         self.receivePingRequestResponse(
           result: .timeout(
-            target: target, pingRequestOrigin: nil, timeout: pingTimeout, sequenceNumber: 0),
-          pingedPeer: target)  // sequence number does not matter
+            target: target,
+            pingRequestOrigin: nil,
+            timeout: pingTimeout,
+            sequenceNumber: 0
+          ),
+          pingedPeer: target
+        )  // sequence number does not matter
       }
     }
   }
@@ -544,16 +617,24 @@ public final class SWIMNIOShell {
       case .sendPing(let target, let payload, let timeout, let sequenceNumber):
         self.log.trace(
           "Periodic ping random member, among: \(self.swim.otherMemberCount)",
-          metadata: self.swim.metadata)
+          metadata: self.swim.metadata
+        )
         Task {
           await self.sendPing(
-            to: target, payload: payload, pingRequestOrigin: nil, pingRequestSequenceNumber: nil,
-            timeout: timeout, sequenceNumber: sequenceNumber)
+            to: target,
+            payload: payload,
+            pingRequestOrigin: nil,
+            pingRequestSequenceNumber: nil,
+            timeout: timeout,
+            sequenceNumber: sequenceNumber
+          )
         }
 
       case .scheduleNextTick(let delay):
-        self.nextPeriodicTickCancellable = self.schedule(delay: delay) {
-          self.handlePeriodicProtocolPeriodTick()
+        self.nextPeriodicTickCancellable.withLock {
+          $0 = self.schedule(delay: delay) {
+            self.handlePeriodicProtocolPeriodTick()
+          }
         }
       }
     }
@@ -581,7 +662,8 @@ public final class SWIMNIOShell {
     let sequenceNumber = self._swim.withLock { $0.nextSequenceNumber() }
     self.tracelog(
       .send(to: targetPeer),
-      message: "ping(replyTo: \(self.peer), payload: .none, sequenceNr: \(sequenceNumber))")
+      message: "ping(replyTo: \(self.peer), payload: .none, sequenceNr: \(sequenceNumber))"
+    )
     Task {
       do {
         let payload = self._swim.withLock { $0.makeGossipPayload(to: nil) }
@@ -592,11 +674,15 @@ public final class SWIMNIOShell {
           sequenceNumber: sequenceNumber
         )
         self.receivePingResponse(
-          response: response, pingRequestOriginPeer: nil, pingRequestSequenceNumber: nil)
+          response: response,
+          pingRequestOriginPeer: nil,
+          pingRequestSequenceNumber: nil
+        )
       } catch {
         self.log.debug(
           "Failed to initial ping, will try again",
-          metadata: ["ping/target": "\(node)", "error": "\(error)"])
+          metadata: ["ping/target": "\(node)", "error": "\(error)"]
+        )
         // TODO: implement via re-trying a few times and then giving up https://github.com/apple/swift-cluster-membership/issues/32
         self.eventLoop.scheduleTask(in: .seconds(5)) {
           self.log.info("(Re)-Attempt ping to initial contact point: \(node)")
@@ -623,7 +709,8 @@ public final class SWIMNIOShell {
     guard let member = swim.member(forNode: node) else {
       self.log.warning(
         "Attempted to confirm .dead [\(node)], yet no such member known",
-        metadata: self.swim.metadata)
+        metadata: self.swim.metadata
+      )
       return
     }
 
@@ -635,14 +722,16 @@ public final class SWIMNIOShell {
         "Attempted to confirmDead node \(node) was ignored, was already dead?",
         metadata: [
           "swim/member": "\(optional: swim.member(forNode: node))"
-        ])
+        ]
+      )
 
     case .applied(let change):
       self.log.trace(
         "Confirmed node as .dead",
         metadata: self.swim.metadata([
           "swim/member": "\(optional: swim.member(forNode: node))"
-        ]))
+        ])
+      )
       self.tryAnnounceMemberReachability(change: change)
     }
   }
@@ -689,10 +778,10 @@ public enum MemberReachability: String, Equatable {
   case unreachable
 }
 
-struct SWIMCancellable {
-  let cancel: () -> Void
+struct SWIMCancellable: Sendable {
+  let cancel: @Sendable () -> Void
 
-  init(_ cancel: @escaping () -> Void) {
+  init(_ cancel: @escaping @Sendable () -> Void) {
     self.cancel = cancel
   }
 }

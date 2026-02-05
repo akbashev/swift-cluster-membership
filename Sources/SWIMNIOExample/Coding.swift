@@ -55,7 +55,11 @@ extension SWIM.Message: Codable {
       let payload = try container.decode(SWIM.GossipPayload<SWIM.NIOPeer>.self, forKey: .payload)
       let sequenceNumber = try container.decode(SWIM.SequenceNumber.self, forKey: .sequenceNumber)
       self = .pingRequest(
-        target: target, replyTo: replyTo, payload: payload, sequenceNumber: sequenceNumber)
+        target: target,
+        replyTo: replyTo,
+        payload: payload,
+        sequenceNumber: sequenceNumber
+      )
 
     case .response_ack:
       let target = try container.decode(SWIM.NIOPeer.self, forKey: .target)
@@ -64,8 +68,12 @@ extension SWIM.Message: Codable {
       let sequenceNumber = try container.decode(SWIM.SequenceNumber.self, forKey: .sequenceNumber)
       self = .response(
         .ack(
-          target: target, incarnation: incarnation, payload: payload, sequenceNumber: sequenceNumber
-        ))
+          target: target,
+          incarnation: incarnation,
+          payload: payload,
+          sequenceNumber: sequenceNumber
+        )
+      )
 
     case .response_nack:
       let target = try container.decode(SWIM.NIOPeer.self, forKey: .target)
@@ -121,7 +129,8 @@ extension SWIM.NIOPeer: Codable {
     let node = try container.decode(Node.self)
     guard let channel = decoder.userInfo[.channelUserInfoKey] as? Channel else {
       fatalError(
-        "Expected channelUserInfoKey to be present in userInfo, unable to decode SWIM.NIOPeer!")
+        "Expected channelUserInfoKey to be present in userInfo, unable to decode SWIM.NIOPeer!"
+      )
     }
     self.init(node: node, channel: channel)
   }
@@ -145,7 +154,11 @@ extension SWIM.Member: Codable {
     let status = try container.decode(SWIM.Status.self, forKey: .status)
     let protocolPeriod = try container.decode(UInt64.self, forKey: .protocolPeriod)
     self.init(
-      peer: peer as! Peer, status: status, protocolPeriod: protocolPeriod, suspicionStartedAt: nil)  // as!-safe, since we only have members of a NIO implementation, so Peer will be NIOPeer
+      peer: peer as! Peer,
+      status: status,
+      protocolPeriod: protocolPeriod,
+      suspicionStartedAt: nil
+    )  // as!-safe, since we only have members of a NIO implementation, so Peer will be NIOPeer
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -194,7 +207,8 @@ extension ClusterMembership.Node: Codable {
     // host
     guard let hostEndIndex = repr[atIndex...].firstIndex(of: ":") else {
       throw SWIMSerializationError.missingData(
-        "Node format illegal, was: \(repr), failed at `host` part")
+        "Node format illegal, was: \(repr), failed at `host` part"
+      )
     }
     let host = String(repr[atIndex..<hostEndIndex])
     atIndex = hostEndIndex
@@ -241,7 +255,8 @@ extension SWIM.GossipPayload: Codable {
   public init(from decoder: Decoder) throws {
     let container = try decoder.singleValueContainer()
     let members: [SWIM.Member<SWIM.NIOPeer>] = try container.decode(
-      [SWIM.Member<SWIM.NIOPeer>].self)
+      [SWIM.Member<SWIM.NIOPeer>].self
+    )
     if members.isEmpty {
       self = .none
     } else {

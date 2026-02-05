@@ -46,7 +46,9 @@ extension SWIM {
 
     /// Create a new member.
     public init(
-      peer: Peer, status: SWIM.Status, protocolPeriod: UInt64,
+      peer: Peer,
+      status: SWIM.Status,
+      protocolPeriod: UInt64,
       suspicionStartedAt: ContinuousClock.Instant? = nil
     ) {
       self.peer = peer

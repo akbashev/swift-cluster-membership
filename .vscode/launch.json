@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:swift-cluster-membership}",
+            "name": "Debug it_Clustered_swim_suspension_reachability",
+            "target": "it_Clustered_swim_suspension_reachability",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug it_Clustered_swim_suspension_reachability"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:swift-cluster-membership}",
+            "name": "Release it_Clustered_swim_suspension_reachability",
+            "target": "it_Clustered_swim_suspension_reachability",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release it_Clustered_swim_suspension_reachability"
+        }
+    ]
+}

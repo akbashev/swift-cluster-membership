@@ -30,7 +30,8 @@ struct SWIMNIOSampleCluster: ParsableCommand {
   var host: String?
 
   @Option(
-    help: "Determines which this node should bind to; Only effective when running a single node")
+    help: "Determines which this node should bind to; Only effective when running a single node"
+  )
   var port: Int?
 
   @Option(

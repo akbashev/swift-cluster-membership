@@ -16,47 +16,57 @@ import ClusterMembership
 import NIO
 import SWIM
 import SWIMTestKit
-import XCTest
+import Testing
 
 @testable import SWIMNIOExample
 
 // TODO: those tests could be done on embedded event loops probably
-final class SWIMNIOEventClusteredTests: EmbeddedClusteredXCTestCase {
+@Suite(.serialized)
+class SWIMNIOEventClusteredTests {
+
+  let session = ClusterSession()
   var settings: SWIMNIO.Settings = SWIMNIO.Settings(swim: .init())
   lazy var myselfNode = Node(protocol: "udp", host: "127.0.0.1", port: 7001, uid: 1111)
   lazy var myselfPeer = SWIM.NIOPeer(node: myselfNode, channel: EmbeddedChannel())
   lazy var myselfMemberAliveInitial = SWIM.Member(
-    peer: myselfPeer, status: .alive(incarnation: 0), protocolPeriod: 0)
+    peer: myselfPeer,
+    status: .alive(incarnation: 0),
+    protocolPeriod: 0
+  )
 
   var group: MultiThreadedEventLoopGroup!
 
-  override func setUp() {
-    super.setUp()
-
+  init() {
     self.settings.node = self.myselfNode
-
     self.group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
   }
 
-  override func tearDown() {
+  deinit {
     try! self.group.syncShutdownGracefully()
     self.group = nil
-    super.tearDown()
   }
 
-  func test_memberStatusChange_alive_emittedForMyself() throws {
+  @Test
+  func test_memberStatusChange_alive_emittedForMyself() async throws {
     let firstProbe = ProbeEventHandler(loop: group.next())
 
     let first = try bindShell(probe: firstProbe) { settings in
       settings.node = self.myselfNode
     }
-    defer { try! first.close().wait() }
 
-    try firstProbe.expectEvent(
-      SWIM.MemberStatusChangedEvent(previousStatus: nil, member: self.myselfMemberAliveInitial))
+    do {
+      try await firstProbe.expectEvent(
+        SWIM.MemberStatusChangedEvent(previousStatus: nil, member: self.myselfMemberAliveInitial)
+      )
+      try await first.close().get()
+    } catch {
+      try await first.close().get()
+      throw error
+    }
   }
 
-  func test_memberStatusChange_suspect_emittedForDyingNode() throws {
+  @Test
+  func test_memberStatusChange_suspect_emittedForDyingNode() async throws {
     let firstProbe = ProbeEventHandler(loop: group.next())
     let secondProbe = ProbeEventHandler(loop: group.next())
 
@@ -71,43 +81,47 @@ final class SWIMNIOEventClusteredTests: EmbeddedClusteredXCTestCase {
       settings.node = self.myselfNode
       settings.swim.initialContactPoints = [secondNode.withoutUID]
     }
-    defer { try! first.close().wait() }
+    defer { Task { try await first.close().get() } }
 
     // wait for second probe to become alive:
-    try secondProbe.expectEvent(
+    try await secondProbe.expectEvent(
       SWIM.MemberStatusChangedEvent(
         previousStatus: nil,
         member: SWIM.Member(
           peer: SWIM.NIOPeer(node: secondNode, channel: EmbeddedChannel()),
-          status: .alive(incarnation: 0), protocolPeriod: 0)
+          status: .alive(incarnation: 0),
+          protocolPeriod: 0
+        )
       )
     )
 
-    sleep(5)  // let them discover each other, since the nodes are slow at retrying and we didn't configure it yet a sleep is here meh
-    try! second.close().wait()
+    try await Task.sleep(for: .seconds(5))  // let them discover each other, since the nodes are slow at retrying and we didn't configure it yet a sleep is here meh
+    try! await second.close().get()
 
-    try firstProbe.expectEvent(
-      SWIM.MemberStatusChangedEvent(previousStatus: nil, member: self.myselfMemberAliveInitial))
+    try await firstProbe.expectEvent(
+      SWIM.MemberStatusChangedEvent(previousStatus: nil, member: self.myselfMemberAliveInitial)
+    )
 
-    let secondAliveEvent = try firstProbe.expectEvent()
-    XCTAssertTrue(secondAliveEvent.isReachabilityChange)
-    XCTAssertTrue(secondAliveEvent.status.isAlive)
-    XCTAssertEqual(secondAliveEvent.member.node.withoutUID, secondNode.withoutUID)
+    let secondAliveEvent = try await firstProbe.expectEvent()
+    #expect(secondAliveEvent.isReachabilityChange)
+    #expect(secondAliveEvent.status.isAlive)
+    #expect(secondAliveEvent.member.node.withoutUID == secondNode.withoutUID)
 
-    let secondDeadEvent = try firstProbe.expectEvent()
-    XCTAssertTrue(secondDeadEvent.isReachabilityChange)
-    XCTAssertTrue(secondDeadEvent.status.isDead)
-    XCTAssertEqual(secondDeadEvent.member.node.withoutUID, secondNode.withoutUID)
+    let secondDeadEvent = try await firstProbe.expectEvent()
+    #expect(secondDeadEvent.isReachabilityChange)
+    #expect(secondDeadEvent.status.isDead)
+    #expect(secondDeadEvent.member.node.withoutUID == secondNode.withoutUID)
   }
 
   private func bindShell(
-    probe probeHandler: ProbeEventHandler, configure: (inout SWIMNIO.Settings) -> Void = { _ in () }
+    probe probeHandler: ProbeEventHandler,
+    configure: (inout SWIMNIO.Settings) -> Void = { _ in () }
   ) throws -> Channel {
     var settings = self.settings
     configure(&settings)
-    self.makeLogCapture(name: "swim-\(settings.node!.port)", settings: &settings)
+    self.session.makeLogCapture(name: "swim-\(settings.node!.port)", settings: &settings)
 
-    self._nodes.append(settings.node!)
+    self.session._nodes.withLock({ $0.append(settings.node!) })
     return try DatagramBootstrap(group: self.group)
       .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
       .channelInitializer { channel in
@@ -127,12 +141,14 @@ extension ProbeEventHandler {
   @discardableResult
   func expectEvent(
     _ expected: SWIM.MemberStatusChangedEvent<SWIM.NIOPeer>? = nil,
-    file: StaticString = (#file), line: UInt = #line
-  ) throws -> SWIM.MemberStatusChangedEvent<SWIM.NIOPeer> {
-    let got = try self.expectEvent()
+    file: StaticString = (#file),
+    line: UInt = #line,
+    sourceLocation: SourceLocation = #_sourceLocation
+  ) async throws -> SWIM.MemberStatusChangedEvent<SWIM.NIOPeer> {
+    let got = try await self.expectEvent()
 
     if let expected = expected {
-      XCTAssertEqual(got, expected, file: file, line: line)
+      #expect(got == expected, sourceLocation: sourceLocation)
     }
 
     return got
@@ -161,11 +177,17 @@ final class ProbeEventHandler: ChannelInboundHandler {
     }
   }
 
-  func expectEvent(file: StaticString = #file, line: UInt = #line) throws
+  func expectEvent(
+    file: StaticString = #file,
+    line: UInt = #line
+  ) async throws
     -> SWIM.MemberStatusChangedEvent<SWIM.NIOPeer>
   {
     let p = self.loop.makePromise(
-      of: SWIM.MemberStatusChangedEvent<SWIM.NIOPeer>.self, file: file, line: line)
+      of: SWIM.MemberStatusChangedEvent<SWIM.NIOPeer>.self,
+      file: file,
+      line: line
+    )
     self.loop.execute {
       assert(self.waitingPromise == nil, "Already waiting on an event")
       if !self.events.isEmpty {
@@ -175,6 +197,6 @@ final class ProbeEventHandler: ChannelInboundHandler {
         self.waitingPromise = p
       }
     }
-    return try p.futureResult.wait()
+    return try await p.futureResult.get()
   }
 }

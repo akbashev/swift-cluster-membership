@@ -16,9 +16,9 @@ import ClusterMembership
 import Logging
 
 #if os(macOS) || os(iOS) || os(watchOS) || os(tvOS)
-  import Darwin
+import Darwin
 #else
-  import Glibc
+import Glibc
 #endif
 
 extension SWIM {
@@ -31,7 +31,7 @@ extension SWIM {
     Peer: SWIMPeer,
     PingOrigin: SWIMPingOriginPeer,
     PingRequestOrigin: SWIMPingRequestOriginPeer
-  >: SWIMProtocol {
+  >: Sendable {
     /// The settings currently in use by this instance.
     public let settings: SWIM.Settings
 
@@ -61,8 +61,10 @@ extension SWIM {
       } else {
         // return the always up to date "our view" on ourselves
         return SWIM.Member(
-          peer: self.peer, status: .alive(incarnation: self.incarnation),
-          protocolPeriod: self.protocolPeriod)
+          peer: self.peer,
+          status: .alive(incarnation: self.incarnation),
+          protocolPeriod: self.protocolPeriod
+        )
       }
     }
 
@@ -115,7 +117,8 @@ extension SWIM {
       didSet {
         assert(
           self.localHealthMultiplier >= 0,
-          "localHealthMultiplier MUST NOT be < 0, but was: \(self.localHealthMultiplier)")
+          "localHealthMultiplier MUST NOT be < 0, but was: \(self.localHealthMultiplier)"
+        )
         self.metrics.localHealthMultiplier.record(self.localHealthMultiplier)
       }
     }
@@ -129,7 +132,8 @@ extension SWIM {
     /// - SeeAlso: Lifeguard IV.A. Local Health Multiplier (LHM)
     var dynamicLHMProtocolInterval: Duration {
       .nanoseconds(
-        Int(self.settings.probeInterval.nanoseconds * Int64(1 + self.localHealthMultiplier)))
+        Int(self.settings.probeInterval.nanoseconds * Int64(1 + self.localHealthMultiplier))
+      )
     }
 
     /// Dynamically adjusted (based on Local Health) timeout to be used when sending `ping` messages.
@@ -141,7 +145,8 @@ extension SWIM {
     /// - SeeAlso: Lifeguard IV.A. Local Health Multiplier (LHM)
     var dynamicLHMPingTimeout: Duration {
       .nanoseconds(
-        Int(self.settings.pingTimeout.nanoseconds * Int64(1 + self.localHealthMultiplier)))
+        Int(self.settings.pingTimeout.nanoseconds * Int64(1 + self.localHealthMultiplier))
+      )
     }
 
     /// The incarnation number is used to get a sense of ordering of events, so if an `.alive` or `.suspect`
@@ -182,7 +187,8 @@ extension SWIM {
     }
 
     func mergeSuspicions(
-      suspectedBy: Set<ClusterMembership.Node>, previouslySuspectedBy: Set<ClusterMembership.Node>
+      suspectedBy: Set<ClusterMembership.Node>,
+      previouslySuspectedBy: Set<ClusterMembership.Node>
     ) -> Set<ClusterMembership.Node> {
       var newSuspectedBy = previouslySuspectedBy
       for suspectedBy in suspectedBy.sorted()
@@ -202,7 +208,8 @@ extension SWIM {
           metadata: [
             "swim/lhm/event": "\(event)",
             "swim/lhm": "\(self.localHealthMultiplier)",
-          ])
+          ]
+        )
       }
 
       self.localHealthMultiplier =
@@ -248,7 +255,8 @@ extension SWIM {
         // We saw this member already and even confirmed it dead, it shall never be added again
         self.log.debug("Attempt to re-add already confirmed dead peer \(peer), ignoring it.")
         directives.append(
-          .memberAlreadyKnownDead(Member(peer: peer, status: .dead, protocolPeriod: 0)))
+          .memberAlreadyKnownDead(Member(peer: peer, status: .dead, protocolPeriod: 0))
+        )
         return directives
       }
 
@@ -304,7 +312,8 @@ extension SWIM {
         // it would take a longer time until it would be pinged for the first time
         // and also likely receive multiple pings within a very short time frame.
         let insertIndex = Int.random(
-          in: self.membersToPing.startIndex...self.membersToPing.endIndex)
+          in: self.membersToPing.startIndex...self.membersToPing.endIndex
+        )
         self.membersToPing.insert(member, at: insertIndex)
         if insertIndex <= self.membersToPingIndex {
           // If we inserted the new member before the current `membersToPingIndex`,
@@ -401,7 +410,9 @@ extension SWIM {
         incomingIncarnation == previousIncarnation
       {
         let suspicions = self.mergeSuspicions(
-          suspectedBy: incomingSuspectedBy, previouslySuspectedBy: previousSuspectedBy)
+          suspectedBy: incomingSuspectedBy,
+          previouslySuspectedBy: previousSuspectedBy
+        )
         status = .suspect(incarnation: incomingIncarnation, suspectedBy: suspicions)
         // we should keep old protocol period when member is already a suspect
         protocolPeriod = member.protocolPeriod
@@ -423,8 +434,11 @@ extension SWIM {
       }
 
       let member = SWIM.Member(
-        peer: peer, status: status, protocolPeriod: protocolPeriod,
-        suspicionStartedAt: suspicionStartedAt)
+        peer: peer,
+        status: status,
+        protocolPeriod: protocolPeriod,
+        suspicionStartedAt: suspicionStartedAt
+      )
       self._members[peer.node] = member
 
       if status.isDead {
@@ -454,7 +468,7 @@ extension SWIM {
     private mutating func resetGossipPayloads(member: SWIM.Member<Peer>) {
       // seems we gained a new member, and we need to reset gossip counts in order to ensure it also receive information about all nodes
       // TODO: this would be a good place to trigger a full state sync, to speed up convergence; see https://github.com/apple/swift-cluster-membership/issues/37
-      self.members.forEach { self.addToGossip(member: $0) }
+      for member in members { self.addToGossip(member: member) }
     }
 
     mutating func incrementProtocolPeriod() {
@@ -533,7 +547,9 @@ extension SWIM {
                 round(
                   Double(maxTimeout - minTimeout)
                     * (log2(Double(suspectedByCount + 1))
-                      / log2(Double(self.settings.lifeguard.maxIndependentSuspicions + 1)))))
+                      / log2(Double(self.settings.lifeguard.maxIndependentSuspicions + 1)))
+                )
+              )
           )
         )
       )
@@ -562,7 +578,9 @@ extension SWIM {
     ///     letting it know that it is being suspected, such that it can refute the suspicion as soon as possible,
     ///     if if still is alive.
     /// - Returns: The gossip payload to be gossiped.
-    public mutating func makeGossipPayload(to target: SWIMAddressablePeer?)
+    public mutating func makeGossipPayload(
+      to target: SWIMAddressablePeer?
+    )
       -> SWIM.GossipPayload<Peer>
     {
       var membersToGossipAbout: [SWIM.Member<Peer>] = []
@@ -597,7 +615,8 @@ extension SWIM {
       // size, or for newer messages that have a lower `numberOfTimesGossiped` counter than the other messages.
       var gossipRoundMessages: [SWIM.Gossip<Peer>] = []
       gossipRoundMessages.reserveCapacity(
-        min(self.settings.gossip.maxNumberOfMessagesPerGossip, self._messagesToGossip.count))
+        min(self.settings.gossip.maxNumberOfMessagesPerGossip, self._messagesToGossip.count)
+      )
       while gossipRoundMessages.count < self.settings.gossip.maxNumberOfMessagesPerGossip,
         let gossip = self._messagesToGossip.removeRoot()
       {
@@ -784,7 +803,8 @@ extension SWIM.Instance {
         .sendPing(
           target: toPing,
           payload: self.makeGossipPayload(to: toPing),
-          timeout: self.dynamicLHMPingTimeout, sequenceNumber: self.nextSequenceNumber()
+          timeout: self.dynamicLHMPingTimeout,
+          sequenceNumber: self.nextSequenceNumber()
         )
       )
     }
@@ -807,8 +827,11 @@ extension SWIM.Instance {
     case membershipChanged(SWIM.MemberStatusChangedEvent<Peer>)
     /// Send a ping to the requested `target` peer using the provided timeout and sequenceNumber.
     case sendPing(
-      target: Peer, payload: SWIM.GossipPayload<Peer>, timeout: Duration,
-      sequenceNumber: SWIM.SequenceNumber)
+      target: Peer,
+      payload: SWIM.GossipPayload<Peer>,
+      timeout: Duration,
+      sequenceNumber: SWIM.SequenceNumber
+    )
     /// Schedule the next timer `onPeriodicPingTick` invocation in `delay` time.
     case scheduleNextTick(delay: Duration)
   }
@@ -846,7 +869,9 @@ extension SWIM.Instance {
         case .applied(let previousStatus, let member):
           directives.append(
             .membershipChanged(
-              SWIM.MemberStatusChangedEvent(previousStatus: previousStatus, member: member)))
+              SWIM.MemberStatusChangedEvent(previousStatus: previousStatus, member: member)
+            )
+          )
         case .ignoredDueToOlderStatus:
           continue
         }
@@ -861,7 +886,9 @@ extension SWIM.Instance {
   // MARK: On Ping Handler
 
   public mutating func onPing(
-    pingOrigin: PingOrigin, payload: SWIM.GossipPayload<Peer>, sequenceNumber: SWIM.SequenceNumber
+    pingOrigin: PingOrigin,
+    payload: SWIM.GossipPayload<Peer>,
+    sequenceNumber: SWIM.SequenceNumber
   ) -> [PingDirective] {
     var directives: [PingDirective]
 
@@ -878,7 +905,8 @@ extension SWIM.Instance {
         incarnation: self.incarnation,
         payload: self.makeGossipPayload(to: pingOrigin),
         acknowledging: sequenceNumber
-      ))
+      )
+    )
 
     return directives
   }
@@ -911,22 +939,33 @@ extension SWIM.Instance {
   // MARK: On Ping Response Handlers
 
   public mutating func onPingResponse(
-    response: SWIM.PingResponse<Peer, PingRequestOrigin>, pingRequestOrigin: PingRequestOrigin?,
+    response: SWIM.PingResponse<Peer, PingRequestOrigin>,
+    pingRequestOrigin: PingRequestOrigin?,
     pingRequestSequenceNumber: SWIM.SequenceNumber?
   ) -> [PingResponseDirective] {
     switch response {
     case .ack(let target, let incarnation, let payload, let sequenceNumber):
       return self.onPingAckResponse(
-        target: target, incarnation: incarnation, payload: payload,
-        pingRequestOrigin: pingRequestOrigin, pingRequestSequenceNumber: pingRequestSequenceNumber,
-        sequenceNumber: sequenceNumber)
+        target: target,
+        incarnation: incarnation,
+        payload: payload,
+        pingRequestOrigin: pingRequestOrigin,
+        pingRequestSequenceNumber: pingRequestSequenceNumber,
+        sequenceNumber: sequenceNumber
+      )
     case .nack(let target, let sequenceNumber):
       return self.onPingNackResponse(
-        target: target, pingRequestOrigin: pingRequestOrigin, sequenceNumber: sequenceNumber)
+        target: target,
+        pingRequestOrigin: pingRequestOrigin,
+        sequenceNumber: sequenceNumber
+      )
     case .timeout(let target, let pingRequestOrigin, let timeout, _):
       return self.onPingResponseTimeout(
-        target: target, timeout: timeout, pingRequestOrigin: pingRequestOrigin,
-        pingRequestSequenceNumber: pingRequestSequenceNumber)
+        target: target,
+        timeout: timeout,
+        pingRequestOrigin: pingRequestOrigin,
+        pingRequestSequenceNumber: pingRequestSequenceNumber
+      )
     }
   }
 
@@ -949,11 +988,13 @@ extension SWIM.Instance {
     directives.append(
       contentsOf: gossipDirectives.map {
         PingResponseDirective.gossipProcessed($0)
-      })
+      }
+    )
 
     self.log.debug(
       "Received ack from [\(pingedNode)] with incarnation [\(incarnation)] and payload [\(payload)]",
-      metadata: self.metadata)
+      metadata: self.metadata
+    )
     // The shell is already informed tha the member moved -> alive by the gossipProcessed directive
     _ = self.mark(pingedNode, as: .alive(incarnation: incarnation))
 
@@ -1028,7 +1069,9 @@ extension SWIM.Instance {
       // The member should become suspect, it missed out ping/ack cycle:
       // we do not inform the shell about -> suspect moves; only unreachable or dead moves are of interest to it.
       _ = self.mark(
-        pingedMember.peer, as: self.makeSuspicion(incarnation: pingedMemberLastKnownIncarnation))
+        pingedMember.peer,
+        as: self.makeSuspicion(incarnation: pingedMemberLastKnownIncarnation)
+      )
 
       // adjust the LHM accordingly, we failed a probe (ping/ack) cycle
       self.adjustLHMultiplier(.failedProbe)
@@ -1079,7 +1122,10 @@ extension SWIM.Instance {
     }
 
     return SendPingRequestDirective(
-      target: target, timeout: self.dynamicLHMPingTimeout, requestDetails: details)
+      target: target,
+      timeout: self.dynamicLHMPingTimeout,
+      requestDetails: details
+    )
   }
 
   /// Directs a shell implementation about how to handle an incoming `.pingRequest`.
@@ -1099,8 +1145,12 @@ extension SWIM.Instance {
     ///   - payload: additional gossip payload to include in the ack message
     ///   - acknowledging: sequence number of the ack message
     case sendAck(
-      peer: PingRequestOrigin, acknowledging: SWIM.SequenceNumber, target: Peer,
-      incarnation: UInt64, payload: SWIM.GossipPayload<Peer>)
+      peer: PingRequestOrigin,
+      acknowledging: SWIM.SequenceNumber,
+      target: Peer,
+      incarnation: UInt64,
+      payload: SWIM.GossipPayload<Peer>
+    )
 
     /// Send a `nack` to the `peer` which originally send this peer request.
     ///
@@ -1122,7 +1172,7 @@ extension SWIM.Instance {
   ///
   /// Only a single `target` peer is used, however it may be pinged "through" a few other members.
   /// The amount of fan-out in pingRequests is configurable by `swim.indirectProbeCount`.
-  public struct SendPingRequestDirective {
+  public struct SendPingRequestDirective: Sendable {
     /// Target that the should be probed by the `requestDetails.memberToPingRequestThrough` peers.
     public let target: Peer
     /// Timeout to be used for all the ping requests about to be sent.
@@ -1131,7 +1181,7 @@ extension SWIM.Instance {
     public let requestDetails: [PingRequestDetail]
 
     /// Describes a specific ping request to be made.
-    public struct PingRequestDetail {
+    public struct PingRequestDetail: Sendable {
       /// Marks the peer the `pingRequest` should be sent to.
       public let peerToPingRequestThrough: Peer
       /// Additional gossip to carry with the `pingRequest`
@@ -1165,7 +1215,8 @@ extension SWIM.Instance {
         metadata: self.metadata([
           "swim/pingRequestOrigin": "\(pingRequestOrigin)",
           "swim/pingSequenceNumber": "\(sequenceNumber)",
-        ]))
+        ])
+      )
       return directives
     }
 
@@ -1182,7 +1233,8 @@ extension SWIM.Instance {
     let indirectPingTimeout = Duration.nanoseconds(
       Int(
         Double(self.settings.pingTimeout.nanoseconds)
-          * self.settings.lifeguard.indirectPingTimeoutMultiplier)
+          * self.settings.lifeguard.indirectPingTimeoutMultiplier
+      )
     )
 
     directives.append(
@@ -1230,7 +1282,8 @@ extension SWIM.Instance {
 
   /// This should be called on first successful (non-nack) pingRequestResponse
   public mutating func onPingRequestResponse(
-    _ response: SWIM.PingResponse<Peer, PingRequestOrigin>, pinged pingedPeer: Peer
+    _ response: SWIM.PingResponse<Peer, PingRequestOrigin>,
+    pinged pingedPeer: Peer
   ) -> [PingRequestResponseDirective] {
     guard let previousStatus = self.status(of: pingedPeer) else {
       // we do not process replies from an unknown member; it likely means we have removed it already for some reason.
@@ -1271,7 +1324,10 @@ extension SWIM.Instance {
         case .applied:
           directives.append(
             .newlySuspect(
-              previousStatus: previousStatus, suspect: self.member(forNode: pingedPeer.node)!))
+              previousStatus: previousStatus,
+              suspect: self.member(forNode: pingedPeer.node)!
+            )
+          )
           return directives
         case .ignoredDueToOlderStatus(let status):
           directives.append(.ignoredDueToOlderStatus(currentStatus: status))
@@ -1288,7 +1344,8 @@ extension SWIM.Instance {
   }
 
   public mutating func onEveryPingRequestResponse(
-    _ result: SWIM.PingResponse<Peer, PingRequestOrigin>, pinged peer: Peer
+    _ result: SWIM.PingResponse<Peer, PingRequestOrigin>,
+    pinged peer: Peer
   ) -> [PingRequestResponseDirective] {
     switch result {
     case .timeout:
@@ -1327,7 +1384,9 @@ extension SWIM.Instance {
     case ignoredDueToOlderStatus(currentStatus: SWIM.Status)
   }
 
-  internal mutating func onGossipPayload(_ payload: SWIM.GossipPayload<Peer>)
+  internal mutating func onGossipPayload(
+    _ payload: SWIM.GossipPayload<Peer>
+  )
     -> [GossipProcessedDirective]
   {
     switch payload {
@@ -1340,7 +1399,9 @@ extension SWIM.Instance {
     }
   }
 
-  internal mutating func onGossipPayload(about member: SWIM.Member<Peer>)
+  internal mutating func onGossipPayload(
+    about member: SWIM.Member<Peer>
+  )
     -> [GossipProcessedDirective]
   {
     if self.isMyself(member) {
@@ -1353,7 +1414,9 @@ extension SWIM.Instance {
   /// ### Unreachability status handling
   /// Performs all special handling of `.unreachable` such that if it is disabled members are automatically promoted to `.dead`.
   /// See `settings.unreachability` for more details.
-  private mutating func onMyselfGossipPayload(myself incoming: SWIM.Member<Peer>)
+  private mutating func onMyselfGossipPayload(
+    myself incoming: SWIM.Member<Peer>
+  )
     -> GossipProcessedDirective
   {
     assert(
@@ -1387,7 +1450,8 @@ extension SWIM.Instance {
           """
           Received gossip about self with incarnation number [\(suspectedInIncarnation)] > current incarnation [\(self._incarnation)], \
           which should never happen and while harmless is highly suspicious, please raise an issue with logs. This MAY be an issue in the library.
-          """)
+          """
+        )
         return .applied(change: nil)
       } else {
         // incoming incarnation was < than current one, i.e. the incoming information is "old" thus we discard it
@@ -1407,7 +1471,8 @@ extension SWIM.Instance {
             """
             Received gossip about self with incarnation number [\(unreachableInIncarnation)] > current incarnation [\(self._incarnation)], \
             which should never happen and while harmless is highly suspicious, please raise an issue with logs. This MAY be an issue in the library.
-            """)
+            """
+          )
           return .applied(change: nil)
         } else {
           self.log.debug(
@@ -1441,7 +1506,9 @@ extension SWIM.Instance {
   /// ### Unreachability status handling
   /// Performs all special handling of `.unreachable` such that if it is disabled members are automatically promoted to `.dead`.
   /// See `settings.unreachability` for more details.
-  private mutating func onOtherMemberGossipPayload(member: SWIM.Member<Peer>)
+  private mutating func onOtherMemberGossipPayload(
+    member: SWIM.Member<Peer>
+  )
     -> [GossipProcessedDirective]
   {
     assert(
@@ -1458,7 +1525,8 @@ extension SWIM.Instance {
           metadata: self.metadata([
             "member": "\(member)",
             "member/node": "\(member.node.detailedDescription)",
-          ]))
+          ])
+        )
         return []
       }
 
@@ -1468,14 +1536,16 @@ extension SWIM.Instance {
         switch directive {
         case .added(let member):
           return .applied(
-            change: SWIM.MemberStatusChangedEvent(previousStatus: nil, member: member))
+            change: SWIM.MemberStatusChangedEvent(previousStatus: nil, member: member)
+          )
         case .previousHostPortMemberConfirmedDead(let change):
           return .applied(change: change)
         case .memberAlreadyKnownDead:
           return nil
         case .newerMemberAlreadyPresent(let member):
           return .applied(
-            change: SWIM.MemberStatusChangedEvent(previousStatus: nil, member: member))
+            change: SWIM.MemberStatusChangedEvent(previousStatus: nil, member: member)
+          )
         }
       }
     }
@@ -1486,14 +1556,16 @@ extension SWIM.Instance {
       if member.status.isSuspect, previousStatus?.isAlive ?? false {
         self.log.debug(
           "Member [\(member.peer.node, orElse: "<unknown-node>")] marked as suspect, via incoming gossip",
-          metadata: self.metadata)
+          metadata: self.metadata
+        )
       }
       directives.append(.applied(change: .init(previousStatus: previousStatus, member: member)))
 
     case .ignoredDueToOlderStatus(let currentStatus):
       self.log.trace(
         "Gossip about member \(member.node), incoming: [\(member.status)] does not supersede current: [\(currentStatus)]",
-        metadata: self.metadata)
+        metadata: self.metadata
+      )
     }
 
     return directives
@@ -1533,7 +1605,8 @@ extension SWIM.Instance {
     switch self.mark(peer, as: .dead) {
     case .applied(let previousStatus, let member):
       return .applied(
-        change: SWIM.MemberStatusChangedEvent(previousStatus: previousStatus, member: member))
+        change: SWIM.MemberStatusChangedEvent(previousStatus: previousStatus, member: member)
+      )
 
     case .ignoredDueToOlderStatus:
       return .ignored  // it was already dead for example
@@ -1559,7 +1632,8 @@ extension SWIM.Instance {
 
     let anythingAsNotTakenIntoAccountInEquality: UInt64 = 0
     return self.removedDeadMemberTombstones.contains(
-      .init(uid: uid, deadlineProtocolPeriod: anythingAsNotTakenIntoAccountInEquality))
+      .init(uid: uid, deadlineProtocolPeriod: anythingAsNotTakenIntoAccountInEquality)
+    )
   }
 
   private mutating func cleanupTombstones() {  // time to cleanup the tombstones

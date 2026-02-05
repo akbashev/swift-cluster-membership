@@ -67,8 +67,13 @@ final class TestPeer: Hashable, SWIMPeer, SWIMPingOriginPeer, SWIMPingRequestOri
       self._messages.withLock {
         $0.append(
           .ping(
-            payload: payload, origin: pingOrigin, timeout: timeout, sequenceNumber: sequenceNumber,
-            continuation: continuation))
+            payload: payload,
+            origin: pingOrigin,
+            timeout: timeout,
+            sequenceNumber: sequenceNumber,
+            continuation: continuation
+          )
+        )
       }
     }
   }
@@ -84,8 +89,14 @@ final class TestPeer: Hashable, SWIMPeer, SWIMPingOriginPeer, SWIMPingRequestOri
       self._messages.withLock {
         $0.append(
           .pingReq(
-            target: target, payload: payload, origin: origin, timeout: timeout,
-            sequenceNumber: sequenceNumber, continuation: continuation))
+            target: target,
+            payload: payload,
+            origin: origin,
+            timeout: timeout,
+            sequenceNumber: sequenceNumber,
+            continuation: continuation
+          )
+        )
       }
     }
   }
@@ -99,8 +110,12 @@ final class TestPeer: Hashable, SWIMPeer, SWIMPingOriginPeer, SWIMPingRequestOri
     self._messages.withLock {
       $0.append(
         .ack(
-          target: target, incarnation: incarnation, payload: payload, sequenceNumber: sequenceNumber
-        ))
+          target: target,
+          incarnation: incarnation,
+          payload: payload,
+          sequenceNumber: sequenceNumber
+        )
+      )
     }
   }
 

@@ -19,7 +19,11 @@ import XCTest
 final class NodeTests: XCTestCase {
   let firstNode = ClusterMembership.Node(protocol: "test", host: "127.0.0.1", port: 7001, uid: 1111)
   let secondNode = ClusterMembership.Node(
-    protocol: "test", host: "127.0.0.1", port: 7002, uid: 2222)
+    protocol: "test",
+    host: "127.0.0.1",
+    port: 7002,
+    uid: 2222
+  )
   let thirdNode = ClusterMembership.Node(protocol: "test", host: "127.0.0.2", port: 7001, uid: 3333)
 
   func testCompareSameProtocolAndHost() throws {
