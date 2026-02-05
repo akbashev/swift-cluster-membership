@@ -24,8 +24,8 @@ import XCTest
 @testable import NoopTests
 
 XCTMain(
-  [
-    testCase(SampleTest.allTests)
-  ]
+    [
+        testCase(SampleTest.allTests)
+    ]
 )
 #endif

@@ -23,113 +23,113 @@ import SWIM
 import SWIMNIOExample
 
 struct SWIMNIOSampleCluster: ParsableCommand {
-  @Option(name: .shortAndLong, help: "The number of nodes to start, defaults to: 1")
-  var count: Int?
+    @Option(name: .shortAndLong, help: "The number of nodes to start, defaults to: 1")
+    var count: Int?
 
-  @Argument(help: "Hostname that node(s) should bind to")
-  var host: String?
+    @Argument(help: "Hostname that node(s) should bind to")
+    var host: String?
 
-  @Option(
-    help: "Determines which this node should bind to; Only effective when running a single node"
-  )
-  var port: Int?
-
-  @Option(
-    help: "Configures which nodes should be passed in as initial contact points, format: host:port,"
-  )
-  var initialContactPoints: String = ""
-
-  @Option(help: "Configures log level")
-  var logLevel: String = "info"
-
-  mutating func run() throws {
-    LoggingSystem.bootstrap(_SWIMPrettyMetadataLogHandler.init)
-    let group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
-
-    // Uncomment this if you'd like to see metrics displayed in the command line periodically;
-    // This bootstraps and uses the Prometheus metrics backend to report metrics periodically by printing them to the stdout (console).
-    //
-    // Note though that this will be a bit noisy, since logs are also emitted to the stdout by default, however it's a nice way
-    // to learn and explore what the metrics are and how they behave when toying around with a local cluster.
-    //        let prom = PrometheusClient()
-    //        MetricsSystem.bootstrap(prom)
-    //
-    //        group.next().scheduleRepeatedTask(initialDelay: .seconds(1), delay: .seconds(10)) { _ in
-    //             prom.collect { (string: String) in
-    //                 print("")
-    //                 print("")
-    //                 print(string)
-    //             }
-    //        }
-
-    let lifecycle = ServiceLifecycle()
-    lifecycle.registerShutdown(
-      label: "eventLoopGroup",
-      .sync(group.syncShutdownGracefully)
+    @Option(
+        help: "Determines which this node should bind to; Only effective when running a single node"
     )
+    var port: Int?
 
-    var settings = SWIMNIO.Settings()
-    if count == nil || count == 1 {
-      let nodePort = self.port ?? 7001
-      settings.logger = Logger(label: "swim-\(nodePort)")
-      settings.logger.logLevel = self.parseLogLevel()
-      settings.swim.logger.logLevel = self.parseLogLevel()
+    @Option(
+        help: "Configures which nodes should be passed in as initial contact points, format: host:port,"
+    )
+    var initialContactPoints: String = ""
 
-      settings.swim.initialContactPoints = self.parseContactPoints()
+    @Option(help: "Configures log level")
+    var logLevel: String = "info"
 
-      let node = SampleSWIMNIONode(port: nodePort, settings: settings, group: group)
-      lifecycle.register(
-        label: "swim-\(nodePort)",
-        start: .sync { node.start() },
-        shutdown: .sync {}
-      )
+    mutating func run() throws {
+        LoggingSystem.bootstrap(_SWIMPrettyMetadataLogHandler.init)
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
 
-    } else {
-      let basePort = port ?? 7001
-      for i in 1...(count ?? 1) {
-        let nodePort = basePort + i
+        // Uncomment this if you'd like to see metrics displayed in the command line periodically;
+        // This bootstraps and uses the Prometheus metrics backend to report metrics periodically by printing them to the stdout (console).
+        //
+        // Note though that this will be a bit noisy, since logs are also emitted to the stdout by default, however it's a nice way
+        // to learn and explore what the metrics are and how they behave when toying around with a local cluster.
+        //        let prom = PrometheusClient()
+        //        MetricsSystem.bootstrap(prom)
+        //
+        //        group.next().scheduleRepeatedTask(initialDelay: .seconds(1), delay: .seconds(10)) { _ in
+        //             prom.collect { (string: String) in
+        //                 print("")
+        //                 print("")
+        //                 print(string)
+        //             }
+        //        }
 
-        settings.logger = Logger(label: "swim-\(nodePort)")
-        settings.swim.initialContactPoints = self.parseContactPoints()
-
-        let node = SampleSWIMNIONode(
-          port: nodePort,
-          settings: settings,
-          group: group
+        let lifecycle = ServiceLifecycle()
+        lifecycle.registerShutdown(
+            label: "eventLoopGroup",
+            .sync(group.syncShutdownGracefully)
         )
 
-        lifecycle.register(
-          label: "swim\(nodePort)",
-          start: .sync { node.start() },
-          shutdown: .sync {}
-        )
-      }
+        var settings = SWIMNIO.Settings()
+        if count == nil || count == 1 {
+            let nodePort = self.port ?? 7001
+            settings.logger = Logger(label: "swim-\(nodePort)")
+            settings.logger.logLevel = self.parseLogLevel()
+            settings.swim.logger.logLevel = self.parseLogLevel()
+
+            settings.swim.initialContactPoints = self.parseContactPoints()
+
+            let node = SampleSWIMNIONode(port: nodePort, settings: settings, group: group)
+            lifecycle.register(
+                label: "swim-\(nodePort)",
+                start: .sync { node.start() },
+                shutdown: .sync {}
+            )
+
+        } else {
+            let basePort = port ?? 7001
+            for i in 1...(count ?? 1) {
+                let nodePort = basePort + i
+
+                settings.logger = Logger(label: "swim-\(nodePort)")
+                settings.swim.initialContactPoints = self.parseContactPoints()
+
+                let node = SampleSWIMNIONode(
+                    port: nodePort,
+                    settings: settings,
+                    group: group
+                )
+
+                lifecycle.register(
+                    label: "swim\(nodePort)",
+                    start: .sync { node.start() },
+                    shutdown: .sync {}
+                )
+            }
+        }
+
+        try lifecycle.startAndWait()
     }
 
-    try lifecycle.startAndWait()
-  }
-
-  private func parseLogLevel() -> Logger.Level {
-    guard let level = Logger.Level.init(rawValue: self.logLevel) else {
-      fatalError("Unknown log level: \(self.logLevel)")
-    }
-    return level
-  }
-
-  private func parseContactPoints() -> Set<ClusterMembership.Node> {
-    guard self.initialContactPoints.trimmingCharacters(in: .whitespacesAndNewlines) != "" else {
-      return []
+    private func parseLogLevel() -> Logger.Level {
+        guard let level = Logger.Level.init(rawValue: self.logLevel) else {
+            fatalError("Unknown log level: \(self.logLevel)")
+        }
+        return level
     }
 
-    let contactPoints: [Node] = self.initialContactPoints.split(separator: ",").map { hostPort in
-      let host = String(hostPort.split(separator: ":")[0])
-      let port = Int(String(hostPort.split(separator: ":")[1]))!
+    private func parseContactPoints() -> Set<ClusterMembership.Node> {
+        guard self.initialContactPoints.trimmingCharacters(in: .whitespacesAndNewlines) != "" else {
+            return []
+        }
 
-      return Node(protocol: "udp", host: host, port: port, uid: nil)
+        let contactPoints: [Node] = self.initialContactPoints.split(separator: ",").map { hostPort in
+            let host = String(hostPort.split(separator: ":")[0])
+            let port = Int(String(hostPort.split(separator: ":")[1]))!
+
+            return Node(protocol: "udp", host: host, port: port, uid: nil)
+        }
+
+        return Set(contactPoints)
     }
-
-    return Set(contactPoints)
-  }
 }
 
 SWIMNIOSampleCluster.main()

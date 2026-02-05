@@ -23,172 +23,172 @@ import Glibc
 #endif
 
 public func getRandomNumbers(count: Int) -> [UInt8] {
-  var values: [UInt8] = .init(repeating: 0, count: count)
-  let fd = open("/dev/urandom", O_RDONLY)
-  precondition(fd >= 0)
-  defer {
-    close(fd)
-  }
-  _ = values.withUnsafeMutableBytes { ptr in
-    read(fd, ptr.baseAddress!, ptr.count)
-  }
-  return values
+    var values: [UInt8] = .init(repeating: 0, count: count)
+    let fd = open("/dev/urandom", O_RDONLY)
+    precondition(fd >= 0)
+    defer {
+        close(fd)
+    }
+    _ = values.withUnsafeMutableBytes { ptr in
+        read(fd, ptr.baseAddress!, ptr.count)
+    }
+    return values
 }
 
 struct HeapTests {
 
-  @Test
-  func testSimple() throws {
-    var h = Heap<Int>(type: .maxHeap)
-    h.append(1)
-    h.append(3)
-    h.append(2)
-    #expect(3 == h.removeRoot())
-    #expect(h.checkHeapProperty())
-  }
-
-  @Test
-  func testSortedDesc() throws {
-    var maxHeap = Heap<Int>(type: .maxHeap)
-    var minHeap = Heap<Int>(type: .minHeap)
-
-    let input = [16, 14, 10, 9, 8, 7, 4, 3, 2, 1]
-    for number in input {
-      minHeap.append(number)
-      maxHeap.append(number)
-      #expect(minHeap.checkHeapProperty())
-      #expect(maxHeap.checkHeapProperty())
-    }
-    var minHeapInputPtr = input.count - 1
-    var maxHeapInputPtr = 0
-    while let maxE = maxHeap.removeRoot(), let minE = minHeap.removeRoot() {
-      #expect(maxE == input[maxHeapInputPtr], "\(maxHeap.debugDescription)")
-      #expect(minE == input[minHeapInputPtr])
-      maxHeapInputPtr += 1
-      minHeapInputPtr -= 1
-      #expect(minHeap.checkHeapProperty(), "\(minHeap.debugDescription)")
-      #expect(maxHeap.checkHeapProperty())
-    }
-    #expect(-1 == minHeapInputPtr)
-    #expect(input.count == maxHeapInputPtr)
-  }
-
-  @Test
-  func testSortedAsc() throws {
-    var maxHeap = Heap<Int>(type: .maxHeap)
-    var minHeap = Heap<Int>(type: .minHeap)
-
-    let input = Array([16, 14, 10, 9, 8, 7, 4, 3, 2, 1].reversed())
-    for number in input {
-      minHeap.append(number)
-      maxHeap.append(number)
-    }
-    var minHeapInputPtr = 0
-    var maxHeapInputPtr = input.count - 1
-    while let maxE = maxHeap.removeRoot(), let minE = minHeap.removeRoot() {
-      #expect(maxE == input[maxHeapInputPtr])
-      #expect(minE == input[minHeapInputPtr])
-      maxHeapInputPtr -= 1
-      minHeapInputPtr += 1
-    }
-    #expect(input.count == minHeapInputPtr)
-    #expect(-1 == maxHeapInputPtr)
-  }
-
-  @Test
-  func testSortedCustom() throws {
-    struct Test: Equatable {
-      let x: Int
+    @Test
+    func testSimple() throws {
+        var h = Heap<Int>(type: .maxHeap)
+        h.append(1)
+        h.append(3)
+        h.append(2)
+        #expect(3 == h.removeRoot())
+        #expect(h.checkHeapProperty())
     }
 
-    var maxHeap = Heap(of: Test.self) {
-      $0.x > $1.x
-    }
-    var minHeap = Heap(of: Test.self) {
-      $0.x < $1.x
-    }
+    @Test
+    func testSortedDesc() throws {
+        var maxHeap = Heap<Int>(type: .maxHeap)
+        var minHeap = Heap<Int>(type: .minHeap)
 
-    let input = Array([16, 14, 10, 9, 8, 7, 4, 3, 2, 1].reversed().map { Test(x: $0) })
-    for number in input {
-      minHeap.append(number)
-      maxHeap.append(number)
-    }
-    var minHeapInputPtr = 0
-    var maxHeapInputPtr = input.count - 1
-    while let maxE = maxHeap.removeRoot(), let minE = minHeap.removeRoot() {
-      #expect(maxE == input[maxHeapInputPtr])
-      #expect(minE == input[minHeapInputPtr])
-      maxHeapInputPtr -= 1
-      minHeapInputPtr += 1
-    }
-    #expect(input.count == minHeapInputPtr)
-    #expect(-1 == maxHeapInputPtr)
-  }
-
-  @Test
-  func testAddAndRemoveRandomNumbers() throws {
-    var maxHeap = Heap<UInt8>(type: .maxHeap)
-    var minHeap = Heap<UInt8>(type: .minHeap)
-    var maxHeapLast = UInt8.max
-    var minHeapLast = UInt8.min
-
-    let N = 100
-
-    for n in getRandomNumbers(count: N) {
-      maxHeap.append(n)
-      minHeap.append(n)
-      #expect(maxHeap.checkHeapProperty(), "\(maxHeap.debugDescription)")
-      #expect(minHeap.checkHeapProperty(), "\(maxHeap.debugDescription)")
-
-      #expect(Array(minHeap.sorted()) == Array(minHeap))
-      #expect(Array(maxHeap.sorted().reversed()) == Array(maxHeap))
+        let input = [16, 14, 10, 9, 8, 7, 4, 3, 2, 1]
+        for number in input {
+            minHeap.append(number)
+            maxHeap.append(number)
+            #expect(minHeap.checkHeapProperty())
+            #expect(maxHeap.checkHeapProperty())
+        }
+        var minHeapInputPtr = input.count - 1
+        var maxHeapInputPtr = 0
+        while let maxE = maxHeap.removeRoot(), let minE = minHeap.removeRoot() {
+            #expect(maxE == input[maxHeapInputPtr], "\(maxHeap.debugDescription)")
+            #expect(minE == input[minHeapInputPtr])
+            maxHeapInputPtr += 1
+            minHeapInputPtr -= 1
+            #expect(minHeap.checkHeapProperty(), "\(minHeap.debugDescription)")
+            #expect(maxHeap.checkHeapProperty())
+        }
+        #expect(-1 == minHeapInputPtr)
+        #expect(input.count == maxHeapInputPtr)
     }
 
-    for _ in 0..<N / 2 {
-      var value = maxHeap.removeRoot()!
-      #expect(value <= maxHeapLast)
-      maxHeapLast = value
-      value = minHeap.removeRoot()!
-      #expect(value >= minHeapLast)
-      minHeapLast = value
+    @Test
+    func testSortedAsc() throws {
+        var maxHeap = Heap<Int>(type: .maxHeap)
+        var minHeap = Heap<Int>(type: .minHeap)
 
-      #expect(minHeap.checkHeapProperty())
-      #expect(maxHeap.checkHeapProperty())
-
-      #expect(Array(minHeap.sorted()) == Array(minHeap))
-      #expect(Array(maxHeap.sorted().reversed()) == Array(maxHeap))
+        let input = Array([16, 14, 10, 9, 8, 7, 4, 3, 2, 1].reversed())
+        for number in input {
+            minHeap.append(number)
+            maxHeap.append(number)
+        }
+        var minHeapInputPtr = 0
+        var maxHeapInputPtr = input.count - 1
+        while let maxE = maxHeap.removeRoot(), let minE = minHeap.removeRoot() {
+            #expect(maxE == input[maxHeapInputPtr])
+            #expect(minE == input[minHeapInputPtr])
+            maxHeapInputPtr -= 1
+            minHeapInputPtr += 1
+        }
+        #expect(input.count == minHeapInputPtr)
+        #expect(-1 == maxHeapInputPtr)
     }
 
-    maxHeapLast = UInt8.max
-    minHeapLast = UInt8.min
+    @Test
+    func testSortedCustom() throws {
+        struct Test: Equatable {
+            let x: Int
+        }
 
-    for n in getRandomNumbers(count: N) {
-      maxHeap.append(n)
-      minHeap.append(n)
-      #expect(maxHeap.checkHeapProperty(), "\(maxHeap.debugDescription)")
-      #expect(minHeap.checkHeapProperty(), "\(maxHeap.debugDescription)")
+        var maxHeap = Heap(of: Test.self) {
+            $0.x > $1.x
+        }
+        var minHeap = Heap(of: Test.self) {
+            $0.x < $1.x
+        }
+
+        let input = Array([16, 14, 10, 9, 8, 7, 4, 3, 2, 1].reversed().map { Test(x: $0) })
+        for number in input {
+            minHeap.append(number)
+            maxHeap.append(number)
+        }
+        var minHeapInputPtr = 0
+        var maxHeapInputPtr = input.count - 1
+        while let maxE = maxHeap.removeRoot(), let minE = minHeap.removeRoot() {
+            #expect(maxE == input[maxHeapInputPtr])
+            #expect(minE == input[minHeapInputPtr])
+            maxHeapInputPtr -= 1
+            minHeapInputPtr += 1
+        }
+        #expect(input.count == minHeapInputPtr)
+        #expect(-1 == maxHeapInputPtr)
     }
 
-    for _ in 0..<N / 2 + N {
-      var value = maxHeap.removeRoot()!
-      #expect(value <= maxHeapLast)
-      maxHeapLast = value
-      value = minHeap.removeRoot()!
-      #expect(value >= minHeapLast)
-      minHeapLast = value
+    @Test
+    func testAddAndRemoveRandomNumbers() throws {
+        var maxHeap = Heap<UInt8>(type: .maxHeap)
+        var minHeap = Heap<UInt8>(type: .minHeap)
+        var maxHeapLast = UInt8.max
+        var minHeapLast = UInt8.min
 
-      #expect(minHeap.checkHeapProperty())
-      #expect(maxHeap.checkHeapProperty())
+        let N = 100
+
+        for n in getRandomNumbers(count: N) {
+            maxHeap.append(n)
+            minHeap.append(n)
+            #expect(maxHeap.checkHeapProperty(), "\(maxHeap.debugDescription)")
+            #expect(minHeap.checkHeapProperty(), "\(maxHeap.debugDescription)")
+
+            #expect(Array(minHeap.sorted()) == Array(minHeap))
+            #expect(Array(maxHeap.sorted().reversed()) == Array(maxHeap))
+        }
+
+        for _ in 0..<N / 2 {
+            var value = maxHeap.removeRoot()!
+            #expect(value <= maxHeapLast)
+            maxHeapLast = value
+            value = minHeap.removeRoot()!
+            #expect(value >= minHeapLast)
+            minHeapLast = value
+
+            #expect(minHeap.checkHeapProperty())
+            #expect(maxHeap.checkHeapProperty())
+
+            #expect(Array(minHeap.sorted()) == Array(minHeap))
+            #expect(Array(maxHeap.sorted().reversed()) == Array(maxHeap))
+        }
+
+        maxHeapLast = UInt8.max
+        minHeapLast = UInt8.min
+
+        for n in getRandomNumbers(count: N) {
+            maxHeap.append(n)
+            minHeap.append(n)
+            #expect(maxHeap.checkHeapProperty(), "\(maxHeap.debugDescription)")
+            #expect(minHeap.checkHeapProperty(), "\(maxHeap.debugDescription)")
+        }
+
+        for _ in 0..<N / 2 + N {
+            var value = maxHeap.removeRoot()!
+            #expect(value <= maxHeapLast)
+            maxHeapLast = value
+            value = minHeap.removeRoot()!
+            #expect(value >= minHeapLast)
+            minHeapLast = value
+
+            #expect(minHeap.checkHeapProperty())
+            #expect(maxHeap.checkHeapProperty())
+        }
+
+        #expect(0 == minHeap.underestimatedCount)
+        #expect(0 == maxHeap.underestimatedCount)
     }
 
-    #expect(0 == minHeap.underestimatedCount)
-    #expect(0 == maxHeap.underestimatedCount)
-  }
-
-  @Test
-  func testRemoveElement() throws {
-    var h = Heap<Int>(type: .maxHeap, storage: [84, 22, 19, 21, 3, 10, 6, 5, 20])!
-    _ = h.remove(value: 10)
-    #expect(h.checkHeapProperty(), "\(h.debugDescription)")
-  }
+    @Test
+    func testRemoveElement() throws {
+        var h = Heap<Int>(type: .maxHeap, storage: [84, 22, 19, 21, 3, 10, 6, 5, 20])!
+        _ = h.remove(value: 10)
+        #expect(h.checkHeapProperty(), "\(h.debugDescription)")
+    }
 }
