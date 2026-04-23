@@ -26,7 +26,7 @@ import Foundation
 /// Example output:
 ///
 /// ```
-/// SWIMNIOSample: [2020-08-25 0:7:59.8420] [info] [Example.swift:66] Membership status changed: [udp://127.0.0.1:7001#7015602685756068157] is now [alive(incarnation: 0)]
+/// SWIMNIOSample: [2020-08-25 00:07:59.842] [info] [Example.swift:66] Membership status changed: [udp://127.0.0.1:7001#7015602685756068157] is now [alive(incarnation: 0)]
 //// metadata:
 //// "swim/member": udp://127.0.0.1:7001#7015602685756068157
 //// "swim/member/previousStatus": unknown
@@ -47,9 +47,7 @@ public struct _SWIMPrettyMetadataLogHandler: LogHandler {
     }
 
     public subscript(metadataKey _: String) -> Logger.Metadata.Value? {
-        get {
-            [:]
-        }
+        get { [:] }
         set {}
     }
 
