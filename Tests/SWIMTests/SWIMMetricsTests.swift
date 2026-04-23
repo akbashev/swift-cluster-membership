@@ -41,7 +41,6 @@ final class SWIMMetricsTests {
     var fourth: TestPeer!
     var fifth: TestPeer!
 
-    let testMetrics: TestMetrics = TestMetrics()
     let metricsLabelPrefix = "swim-tests-\(UUID().uuidString)"
 
     init() {
@@ -50,8 +49,6 @@ final class SWIMMetricsTests {
         self.third = TestPeer(node: self.thirdNode)
         self.fourth = TestPeer(node: self.fourthNode)
         self.fifth = TestPeer(node: self.fifthNode)
-
-        MetricsSystem.bootstrapInternal(self.testMetrics)
     }
 
     deinit {
@@ -60,8 +57,6 @@ final class SWIMMetricsTests {
         self.third = nil
         self.fourth = nil
         self.fifth = nil
-
-        MetricsSystem.bootstrapInternal(NOOPMetricsHandler.instance)
     }
 
     // ==== ------------------------------------------------------------------------------------------------------------
@@ -72,23 +67,26 @@ final class SWIMMetricsTests {
     let dead = [("status", "dead")]
 
     @Test
-    func test_members_becoming_suspect() {
+    func test_members_becoming_suspect() throws {
         var settings = SWIM.Settings()
         settings.metrics.labelPrefix = self.metricsLabelPrefix
         settings.unreachability = .enabled
-        var swim = SWIM.Instance<TestPeer, TestPeer, TestPeer>(settings: settings, myself: self.myself)
 
-        self.expectMembership(swim, alive: 1, unreachable: 0, totalDead: 0)
+        let testMetrics: TestMetrics = TestMetrics()
+        var swim = withMetricsFactory(testMetrics) {
+            SWIM.Instance<TestPeer, TestPeer, TestPeer>(settings: settings, myself: self.myself)
+        }
+        try self.expectMembership(swim, testMetrics: testMetrics, alive: 1, unreachable: 0, totalDead: 0)
 
         _ = swim.addMember(self.second, status: .alive(incarnation: 0))
-        self.expectMembership(swim, alive: 2, unreachable: 0, totalDead: 0)
+        try self.expectMembership(swim, testMetrics: testMetrics, alive: 2, unreachable: 0, totalDead: 0)
 
         _ = swim.addMember(self.third, status: .alive(incarnation: 0))
-        self.expectMembership(swim, alive: 3, unreachable: 0, totalDead: 0)
+        try self.expectMembership(swim, testMetrics: testMetrics, alive: 3, unreachable: 0, totalDead: 0)
 
         _ = swim.addMember(self.fourth, status: .alive(incarnation: 0))
         _ = swim.onPeriodicPingTick()
-        self.expectMembership(swim, alive: 4, unreachable: 0, totalDead: 0)
+        try self.expectMembership(swim, testMetrics: testMetrics, alive: 4, unreachable: 0, totalDead: 0)
 
         for _ in 0..<10 {
             _ = swim.onPingResponse(
@@ -103,7 +101,7 @@ final class SWIMMetricsTests {
             )
             _ = swim.onPingRequestResponse(.nack(target: self.third, sequenceNumber: 0), pinged: self.second)
         }
-        expectMembership(swim, suspect: 1)
+        try expectMembership(swim, testMetrics: testMetrics, suspect: 1)
 
         for _ in 0..<10 {
             _ = swim.onPingResponse(
@@ -112,7 +110,7 @@ final class SWIMMetricsTests {
                 pingRequestSequenceNumber: nil
             )
         }
-        expectMembership(swim, suspect: 2)
+        try expectMembership(swim, testMetrics: testMetrics, suspect: 2)
     }
 
     enum DowningMode {
@@ -121,16 +119,16 @@ final class SWIMMetricsTests {
     }
 
     @Test
-    func test_members_becoming_dead() {
-        self.shared_members(mode: .deadImmediately)
+    func test_members_becoming_dead() throws {
+        try self.shared_members(mode: .deadImmediately)
     }
 
     @Test
-    func test_members_becoming_unreachable() {
-        self.shared_members(mode: .unreachableFirst)
+    func test_members_becoming_unreachable() throws {
+        try self.shared_members(mode: .unreachableFirst)
     }
 
-    func shared_members(mode: DowningMode) {
+    func shared_members(mode: DowningMode) throws {
         var settings = SWIM.Settings()
         settings.metrics.labelPrefix = self.metricsLabelPrefix
         switch mode {
@@ -141,19 +139,22 @@ final class SWIMMetricsTests {
         }
         let mockTime = Mutex(ContinuousClock.now)
         settings.timeSourceNow = { mockTime.withLock { $0 } }
-        var swim = SWIM.Instance<TestPeer, TestPeer, TestPeer>(settings: settings, myself: self.myself)
+        let testMetrics: TestMetrics = TestMetrics()
+        var swim = withMetricsFactory(testMetrics) {
+            SWIM.Instance<TestPeer, TestPeer, TestPeer>(settings: settings, myself: self.myself)
+        }
 
-        self.expectMembership(swim, alive: 1, unreachable: 0, totalDead: 0)
+        try self.expectMembership(swim, testMetrics: testMetrics, alive: 1, unreachable: 0, totalDead: 0)
 
         _ = swim.addMember(self.second, status: .alive(incarnation: 0))
-        self.expectMembership(swim, alive: 2, unreachable: 0, totalDead: 0)
+        try self.expectMembership(swim, testMetrics: testMetrics, alive: 2, unreachable: 0, totalDead: 0)
 
         _ = swim.addMember(self.third, status: .alive(incarnation: 0))
-        self.expectMembership(swim, alive: 3, unreachable: 0, totalDead: 0)
+        try self.expectMembership(swim, testMetrics: testMetrics, alive: 3, unreachable: 0, totalDead: 0)
 
         _ = swim.addMember(self.fourth, status: .alive(incarnation: 0))
         _ = swim.onPeriodicPingTick()
-        self.expectMembership(swim, alive: 4, unreachable: 0, totalDead: 0)
+        try self.expectMembership(swim, testMetrics: testMetrics, alive: 4, unreachable: 0, totalDead: 0)
 
         let totalMembers = 4
 
@@ -176,8 +177,9 @@ final class SWIMMetricsTests {
         case .unreachableFirst: (expectedUnreachables1, expectedDeads1) = (1, 0)
         case .deadImmediately: (expectedUnreachables1, expectedDeads1) = (0, 1)
         }
-        self.expectMembership(
+        try self.expectMembership(
             swim,
+            testMetrics: testMetrics,
             alive: totalMembers - expectedDeads1 - expectedUnreachables1,
             unreachable: expectedUnreachables1,
             totalDead: expectedDeads1
@@ -197,8 +199,9 @@ final class SWIMMetricsTests {
         case .unreachableFirst: (expectedUnreachables2, expectedDeads2) = (2, 0)
         case .deadImmediately: (expectedUnreachables2, expectedDeads2) = (0, 2)
         }
-        self.expectMembership(
+        try self.expectMembership(
             swim,
+            testMetrics: testMetrics,
             alive: totalMembers - expectedDeads2 - expectedUnreachables2,
             unreachable: expectedUnreachables2,
             totalDead: expectedDeads2
@@ -206,14 +209,15 @@ final class SWIMMetricsTests {
 
         if mode == .unreachableFirst {
             _ = swim.confirmDead(peer: self.second)
-            self.expectMembership(
+            try self.expectMembership(
                 swim,
+                testMetrics: testMetrics,
                 alive: totalMembers - expectedDeads2 - expectedUnreachables2,
                 unreachable: expectedUnreachables2 - 1,
                 totalDead: expectedDeads2 + 1
             )
 
-            let gotRemovedDeadTombstones = try! self.testMetrics.expectRecorder(
+            let gotRemovedDeadTombstones = try testMetrics.expectRecorder(
                 swim.metrics.removedDeadMemberTombstones
             ).lastValue!
             #expect(gotRemovedDeadTombstones == Double(expectedDeads2 + 1))
@@ -221,24 +225,27 @@ final class SWIMMetricsTests {
     }
 
     @Test
-    func test_lha_adjustment() {
+    func test_lha_adjustment() throws {
         var settings = SWIM.Settings()
         settings.metrics.labelPrefix = self.metricsLabelPrefix
-        var swim = SWIM.Instance<TestPeer, TestPeer, TestPeer>(settings: settings, myself: self.myself)
 
+        let testMetrics: TestMetrics = TestMetrics()
+        var swim = withMetricsFactory(testMetrics) {
+            SWIM.Instance<TestPeer, TestPeer, TestPeer>(settings: settings, myself: self.myself)
+        }
         _ = swim.addMember(self.second, status: .alive(incarnation: 0))
         _ = swim.addMember(self.third, status: .alive(incarnation: 0))
 
-        #expect(try! self.testMetrics.expectRecorder(swim.metrics.localHealthMultiplier).lastValue == Double(0))
+        try #expect(testMetrics.expectRecorder(swim.metrics.localHealthMultiplier).lastValue == Double(0))
 
         swim.adjustLHMultiplier(.failedProbe)
-        #expect(try! self.testMetrics.expectRecorder(swim.metrics.localHealthMultiplier).lastValue == Double(1))
+        try #expect(testMetrics.expectRecorder(swim.metrics.localHealthMultiplier).lastValue == Double(1))
 
         swim.adjustLHMultiplier(.failedProbe)
-        #expect(try! self.testMetrics.expectRecorder(swim.metrics.localHealthMultiplier).lastValue == Double(2))
+        try #expect(testMetrics.expectRecorder(swim.metrics.localHealthMultiplier).lastValue == Double(2))
 
         swim.adjustLHMultiplier(.successfulProbe)
-        #expect(try! self.testMetrics.expectRecorder(swim.metrics.localHealthMultiplier).lastValue == Double(1))
+        try #expect(testMetrics.expectRecorder(swim.metrics.localHealthMultiplier).lastValue == Double(1))
     }
 }
 
@@ -248,12 +255,13 @@ final class SWIMMetricsTests {
 extension SWIMMetricsTests {
     private func expectMembership(
         _ swim: SWIM.Instance<TestPeer, TestPeer, TestPeer>,
+        testMetrics: TestMetrics,
         suspect: Int,
         sourceLocation: SourceLocation = #_sourceLocation
-    ) {
+    ) throws {
         let m: SWIM.Metrics = swim.metrics
 
-        let gotSuspect: Double? = try! self.testMetrics.expectRecorder(m.membersSuspect).lastValue
+        let gotSuspect: Double? = try testMetrics.expectRecorder(m.membersSuspect).lastValue
         #expect(
             gotSuspect == Double(suspect),
             """
@@ -266,14 +274,15 @@ extension SWIMMetricsTests {
 
     private func expectMembership(
         _ swim: SWIM.Instance<TestPeer, TestPeer, TestPeer>,
+        testMetrics: TestMetrics,
         alive: Int,
         unreachable: Int,
         totalDead: Int,
         sourceLocation: SourceLocation = #_sourceLocation
-    ) {
+    ) throws {
         let m: SWIM.Metrics = swim.metrics
 
-        let gotAlive: Double? = try! self.testMetrics.expectRecorder(m.membersAlive).lastValue
+        let gotAlive: Double? = try testMetrics.expectRecorder(m.membersAlive).lastValue
         #expect(
             gotAlive == Double(alive),
             """
@@ -283,7 +292,7 @@ extension SWIMMetricsTests {
             sourceLocation: sourceLocation
         )
 
-        let gotUnreachable: Double? = try! self.testMetrics.expectRecorder(m.membersUnreachable).lastValue
+        let gotUnreachable: Double? = try testMetrics.expectRecorder(m.membersUnreachable).lastValue
         #expect(
             gotUnreachable == Double(unreachable),
             """
@@ -293,7 +302,7 @@ extension SWIMMetricsTests {
             sourceLocation: sourceLocation
         )
 
-        let gotTotalDead: Int64? = try! self.testMetrics.expectCounter(m.membersTotalDead).totalValue
+        let gotTotalDead: Int64? = try testMetrics.expectCounter(m.membersTotalDead).totalValue
         #expect(
             gotTotalDead == Int64(totalDead),
             """

@@ -116,7 +116,7 @@ var dependencies: [Package.Dependency] = [
 
     // ~~~ SSWG APIs ~~~
     .package(url: "https://github.com/apple/swift-log.git", from: "1.9.0"),
-    .package(url: "https://github.com/apple/swift-metrics.git", "2.8.0"..<"3.0.0"),  // since latest
+    .package(url: "https://github.com/apple/swift-metrics.git", "2.10.0"..<"3.0.0"),  // since latest
 
 ]
 

@@ -59,21 +59,21 @@ final class SWIMNIOMetricsTests {
 
             let m: SWIM.Metrics.ShellMetrics = firstHandler.metrics!
 
-            let roundTripTime = try! self.testMetrics.expectTimer(m.pingResponseTime)
+            let roundTripTime = try self.testMetrics.expectTimer(m.pingResponseTime)
             #expect(roundTripTime.lastValue != nil)  // some roundtrip time should have been reported
             for rtt in roundTripTime.values {
                 print("  ping rtt recorded: \(TimeAmount.nanoseconds(rtt).prettyDescription)")
             }
 
-            let messageInboundCount = try! self.testMetrics.expectCounter(m.messageInboundCount)
-            let messageInboundBytes = try! self.testMetrics.expectRecorder(m.messageInboundBytes)
+            let messageInboundCount = try self.testMetrics.expectCounter(m.messageInboundCount)
+            let messageInboundBytes = try self.testMetrics.expectRecorder(m.messageInboundBytes)
             print("  messageInboundCount = \(messageInboundCount.totalValue)")
             print("  messageInboundBytes = \(messageInboundBytes.lastValue!)")
             #expect(messageInboundCount.totalValue > 0)
             #expect(messageInboundBytes.lastValue! > 0)
 
-            let messageOutboundCount = try! self.testMetrics.expectCounter(m.messageOutboundCount)
-            let messageOutboundBytes = try! self.testMetrics.expectRecorder(m.messageOutboundBytes)
+            let messageOutboundCount = try self.testMetrics.expectCounter(m.messageOutboundCount)
+            let messageOutboundBytes = try self.testMetrics.expectRecorder(m.messageOutboundBytes)
             print("  messageOutboundCount = \(messageOutboundCount.totalValue)")
             print("  messageOutboundBytes = \(messageOutboundBytes.lastValue!)")
             #expect(messageOutboundCount.totalValue > 0)
@@ -82,30 +82,30 @@ final class SWIMNIOMetricsTests {
             thirdChannel.close(promise: nil)
             try await Task.sleep(for: .seconds(2))
 
-            let pingRequestResponseTimeAll = try! self.testMetrics.expectTimer(m.pingRequestResponseTimeAll)
+            let pingRequestResponseTimeAll = try self.testMetrics.expectTimer(m.pingRequestResponseTimeAll)
             print("  pingRequestResponseTimeAll = \(pingRequestResponseTimeAll.lastValue!)")
             #expect(pingRequestResponseTimeAll.lastValue! > 0)
 
-            let pingRequestResponseTimeFirst = try! self.testMetrics.expectTimer(m.pingRequestResponseTimeFirst)
+            let pingRequestResponseTimeFirst = try self.testMetrics.expectTimer(m.pingRequestResponseTimeFirst)
             #expect(pingRequestResponseTimeFirst.lastValue == nil)  // because this only counts ACKs, and we get NACKs because the peer is down
 
-            let successfulPingProbes = try! self.testMetrics.expectCounter(
+            let successfulPingProbes = try self.testMetrics.expectCounter(
                 firstHandler.shell.swim.metrics.successfulPingProbes
             )
             print("  successfulPingProbes = \(successfulPingProbes.totalValue)")
             #expect(successfulPingProbes.totalValue > 1)  // definitely at least one, we joined some nodes
 
-            let failedPingProbes = try! self.testMetrics.expectCounter(firstHandler.shell.swim.metrics.failedPingProbes)
+            let failedPingProbes = try self.testMetrics.expectCounter(firstHandler.shell.swim.metrics.failedPingProbes)
             print("  failedPingProbes = \(failedPingProbes.totalValue)")
             #expect(failedPingProbes.totalValue > 1)  // definitely at least one, we detected the down peer
 
-            let successfulPingRequestProbes = try! self.testMetrics.expectCounter(
+            let successfulPingRequestProbes = try self.testMetrics.expectCounter(
                 firstHandler.shell.swim.metrics.successfulPingRequestProbes
             )
             print("  successfulPingRequestProbes = \(successfulPingRequestProbes.totalValue)")
             #expect(successfulPingRequestProbes.totalValue > 1)  // definitely at least one, the second peer is alive and .nacks us, so we count that as success
 
-            let failedPingRequestProbes = try! self.testMetrics.expectCounter(
+            let failedPingRequestProbes = try self.testMetrics.expectCounter(
                 firstHandler.shell.swim.metrics.failedPingRequestProbes
             )
             print("  failedPingRequestProbes = \(failedPingRequestProbes.totalValue)")
